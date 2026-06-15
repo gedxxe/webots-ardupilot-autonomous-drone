@@ -77,6 +77,10 @@ WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
 MAVLINK_OUT="udp:127.0.0.1:14550"
 ```
 
+Leave `WEBOTS_EXAMPLE_RELATIVE` commented unless you intentionally want to use
+the Webots example directly from the ArduPilot checkout instead of this repo's
+vendored `webots/` tree.
+
 Examples:
 
 ```text
