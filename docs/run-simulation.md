@@ -5,8 +5,8 @@ Runbook ini menjelaskan cara menjalankan kode simulasi dari nol sampai autonomy 
 Status saat ini:
 
 - Webots baseline world sudah tersedia dari vendored ArduPilot Webots example.
-- YOLO model belum ada.
-- Camera adapter belum ada.
+- Webots TCP camera adapter sudah tersedia untuk `iris_camera.wbt`.
+- YOLO wrapper sudah tersedia, tetapi model gate tidak disimpan di repo.
 - Runtime tetap bisa diuji dengan ArduPilot Webots example dan synthetic gate detector.
 
 Baseline rule:
@@ -14,6 +14,7 @@ Baseline rule:
 - This repo now contains a full vendored copy of ArduPilot's Webots Python
   example in `webots/`.
 - For baseline testing, open `webots/worlds/iris.wbt` from this repo.
+- For Webots camera plus YOLO tests, open `webots/worlds/iris_camera.wbt`.
 - Do not replace it with partial copies. Partial copies can make the Iris
   vehicle disappear because `.wbt`, `.proto`, meshes, textures, controllers,
   scripts, and params reference each other.
@@ -72,6 +73,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -e ".[dev]"
+```
+
+Install vision dependencies only when testing `--detector webots-yolo`:
+
+```bash
+pip install -e ".[dev,vision]"
 ```
 
 Create simulator env:
@@ -302,6 +309,67 @@ SEND_COMMANDS="1"
 
 inside `configs/autonomy_runtime.env`.
 
+## Step 7: Webots Camera Plus YOLO Dry-Run
+
+This mode uses real frames from `iris_camera.wbt` and converts YOLO output into
+`GateDetection`. It still sends no movement command unless `SEND_COMMANDS=1`.
+
+Terminal A:
+
+```bash
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+webots webots/worlds/iris_camera.wbt
+```
+
+Expected Webots console clue:
+
+```text
+Camera stream started at 127.0.0.1:5599
+```
+
+In `configs/sitl_webots.env`, use:
+
+```text
+WEBOTS_WORLD="worlds/iris_camera.wbt"
+WEBOTS_PARAM_FILE="params/iris.parm"
+```
+
+Install vision dependencies:
+
+```bash
+source .venv/bin/activate
+pip install -e ".[dev,vision]"
+```
+
+In `configs/autonomy_runtime.env`, use:
+
+```text
+DETECTOR="webots-yolo"
+YOLO_MODEL_PATH="/media/gedxxe/DATA/models/gate_yolov8n.pt"
+YOLO_GATE_CLASS_NAMES="gate"
+WEBOTS_CAMERA_PORT="5599"
+WEBOTS_CAMERA_ENCODING="gray8"
+SEND_COMMANDS="0"
+```
+
+Then run:
+
+```bash
+scripts/run_autonomy_sitl.sh
+```
+
+Important:
+
+- The upstream ArduPilot Webots camera stream is grayscale. The adapter expands
+  it to three channels for YOLO. This tests geometry/perception wiring, not true
+  RGB color behavior.
+- If no gate model exists or no gate is visible, the mission should stay in
+  `seek_gate` and keep scanning.
+- Keep `SEND_COMMANDS="0"` until the detector is stable.
+
+See `docs/webots-yolo-pipeline.md` for the full detector pipeline and class
+filtering rules.
+
 ## Course Direction
 
 `forward_position_m` is computed from ArduPilot `LOCAL_POSITION_NED`.
@@ -341,6 +409,12 @@ When the custom Webots world exists, this must be verified before trusting gate 
 - Runs mission logic with synthetic gate detections.
 - Good for SITL wiring before YOLO exists.
 
+`drone-autonomy --mode autonomy --detector webots-yolo`
+
+- Reads Webots camera frames from the TCP stream.
+- Runs YOLO and returns real `GateDetection` objects.
+- Requires `pip install -e ".[vision]"` and `--yolo-model`.
+
 `--send-commands`
 
 - Required before runtime sends MAVLink commands.
@@ -348,9 +422,9 @@ When the custom Webots world exists, this must be verified before trusting gate 
 
 ## What This Does Not Test Yet
 
-- Real YOLO gate detection.
-- Webots camera frame capture.
-- Real gate geometry or lighting.
+- Gate behavior without a trained/provided YOLO model.
+- True RGB camera behavior; upstream `iris_camera.wbt` stream is grayscale.
+- Custom two-gate geometry or lighting.
 - Real obstacle avoidance.
 - Hardware safety behavior.
 

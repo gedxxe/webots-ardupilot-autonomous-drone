@@ -39,13 +39,16 @@ Before `--send-commands`:
 - MAVLink command adapter for mode, arm, takeoff, land, and body-frame velocity.
 - Runtime loop that can run dry or send commands.
 - Synthetic gate detector for SITL wiring tests before YOLO/Webots camera integration.
+- Webots TCP camera adapter for `iris_camera.wbt`.
+- YOLO gate detector wrapper that converts model boxes to `GateDetection`.
 
 ## Still Required Outside Code
 
-- Real or trained YOLOv8n gate model.
-- Camera adapter from Webots frames to the detector.
+- Real or trained YOLOv8n gate model file.
+- `pip install -e ".[vision]"` before using `--detector webots-yolo`.
 - ArduPilot SITL running and publishing MAVLink on the configured UDP endpoint.
 - Correct Webots course alignment relative to `LOCAL_POSITION_NED`.
+- Custom two-gate Webots world or added gate assets.
 
 ## Available Baseline Webots Assets
 
@@ -65,8 +68,8 @@ later under `webots/worlds/` with matching local assets.
 
 - `COMMAND_ACK` parsing and retry policy.
 - Lost-heartbeat failsafe in the runtime loop.
-- Webots camera adapter.
-- YOLOv8n detector wrapper.
+- True RGB Webots stream; upstream `iris_camera.wbt` currently streams grayscale.
+- Real-hardware C920/OpenCV camera source.
 - User-editable mission tuning file.
 - Automatic course-frame calibration.
 - Hardware launch profile.
@@ -80,7 +83,8 @@ later under `webots/worlds/` with matching local assets.
   upstream example worlds, such as `StraightRoadSegment`.
 - ArduPilot accepts `MAV_CMD_NAV_TAKEOFF` and body velocity commands in GUIDED mode.
 - Gate pass distance and final forward exit distance are realistic for the world scale.
-- Synthetic detector should be replaced by real detector before judging gate behavior.
+- `webots-yolo` detections only occur for the intended gate class.
+- Synthetic detector should not be used for judging gate behavior.
 
 ## Known Design Choices
 

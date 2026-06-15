@@ -136,7 +136,7 @@ The mission measures forward distance by projecting `LOCAL_POSITION_NED` onto th
 
 That is expected. Synthetic detector is not perception. It returns centered boxes to test mission and MAVLink wiring only.
 
-Replace it with a real Webots camera adapter plus YOLO wrapper before evaluating gate behavior.
+Use `--detector webots-yolo` with a trained gate model before evaluating gate behavior.
 
 ## Vehicle overshoots gate 2 in synthetic test
 
@@ -148,6 +148,75 @@ Synthetic detection has no real depth or camera timing. The real mitigation is:
 - real detector timing in Webots.
 
 Tune after the real world and camera adapter exist.
+
+## `--detector webots-yolo` says `--yolo-model` is required
+
+Set the model path in `configs/autonomy_runtime.env`:
+
+```text
+DETECTOR="webots-yolo"
+YOLO_MODEL_PATH="/media/gedxxe/DATA/models/gate_yolov8n.pt"
+```
+
+The repo does not include a trained gate model.
+
+## `Ultralytics YOLO is required`
+
+Install the optional vision dependencies in the active Python environment:
+
+```bash
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+source .venv/bin/activate
+pip install -e ".[dev,vision]"
+```
+
+If you use `venv-ardupilot`, activate that environment first and run the same
+install command from this repo.
+
+## `webots-yolo` stays in `seeking gate`
+
+Check these in order:
+
+1. Webots opened `webots/worlds/iris_camera.wbt`, not `iris.wbt`.
+2. Webots console printed `Camera stream started at 127.0.0.1:5599`.
+3. `WEBOTS_CAMERA_PORT="5599"` in `configs/autonomy_runtime.env`.
+4. `YOLO_MODEL_PATH` points to a real `.pt` model.
+5. The model class filter matches your training labels.
+
+Default class filter:
+
+```text
+YOLO_GATE_CLASS_NAMES="gate"
+YOLO_GATE_CLASS_IDS=""
+```
+
+If your gate class is id `0` but not named `gate`, use:
+
+```text
+YOLO_GATE_CLASS_NAMES=""
+YOLO_GATE_CLASS_IDS="0"
+```
+
+Do not clear both filters during motion tests unless the model detects only
+gates. Otherwise the mission may center on the wrong object.
+
+If runtime prints:
+
+```text
+webots-yolo waiting for camera frame tcp://127.0.0.1:5599
+```
+
+the camera TCP stream is not connected yet. Fix Webots world/port first before
+tuning YOLO.
+
+## YOLO detections look worse than expected in Webots
+
+The upstream ArduPilot `iris_camera.wbt` stream is grayscale. The adapter expands
+gray frames to three channels before YOLO so the pipeline can run, but this is
+not true RGB validation.
+
+For final camera behavior, use a future RGB Webots stream or the real C920/OpenCV
+source while keeping the same `YoloGateDetector -> GateDetection` contract.
 
 ## `scripts/run_sitl_webots.sh` says env file missing
 

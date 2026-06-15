@@ -15,6 +15,10 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+vision = [
+    "numpy>=1.26",
+    "ultralytics>=8.0",
+]
 
 [project.scripts]
 drone-autonomy = "drone_autonomy.cli:main"

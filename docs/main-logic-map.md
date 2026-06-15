@@ -151,14 +151,20 @@ src/drone_autonomy/perception/synthetic.py
 
 Synthetic detector is only for wiring tests. It returns centered gate boxes based on mission phase.
 
-Future detector:
+Implemented Webots plus YOLO detector path:
 
 ```text
-Webots/OpenCV camera frame
--> YOLOv8n wrapper
+webots/worlds/iris_camera.wbt
+-> TCP camera stream 127.0.0.1:5599
+-> src/drone_autonomy/perception/webots_camera.py
+-> src/drone_autonomy/perception/yolo.py
 -> GateDetection
 -> MissionTelemetry.gate_detection
 ```
+
+The current upstream Webots stream is `gray8`, expanded to three channels for
+YOLO. A future real-hardware path should replace only the frame source with a
+C920/OpenCV adapter.
 
 The detector must not command the drone.
 

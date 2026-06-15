@@ -97,6 +97,7 @@ after the baseline works.
 Read these before running motion tests:
 
 - [docs/run-simulation.md](docs/run-simulation.md): exact step-by-step runbook.
+- [docs/webots-yolo-pipeline.md](docs/webots-yolo-pipeline.md): Webots camera stream to YOLO to `GateDetection`.
 - [docs/main-logic-map.md](docs/main-logic-map.md): map of runtime, mission, MAVLink, and detector code.
 - [docs/webots-source-sync.md](docs/webots-source-sync.md): how the vendored Webots tree is sourced and refreshed.
 - [docs/troubleshooting.md](docs/troubleshooting.md): common failures and fixes.

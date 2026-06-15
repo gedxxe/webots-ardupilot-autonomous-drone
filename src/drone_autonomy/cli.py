@@ -7,6 +7,20 @@ from drone_autonomy.mavlink.connection import MavlinkClient
 from drone_autonomy.runtime.autonomy_loop import AutonomyRuntime, AutonomyRuntimeConfig
 
 
+def _csv_strings(value: str) -> tuple[str, ...]:
+    """Parse comma-separated CLI/env values into a stable tuple."""
+
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _csv_ints(value: str) -> tuple[int, ...]:
+    """Parse comma-separated integer values used for YOLO class ids."""
+
+    if not value.strip():
+        return ()
+    return tuple(int(item.strip()) for item in value.split(",") if item.strip())
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI used for both MAVLink smoke tests and autonomy runtime."""
 
@@ -39,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--detector",
-        choices=["none", "synthetic"],
+        choices=["none", "synthetic", "webots-yolo"],
         default="none",
         help="Detection source for autonomy mode.",
     )
@@ -72,6 +86,55 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.0,
         help="LOCAL_POSITION_NED y component of course-forward direction.",
     )
+    parser.add_argument(
+        "--webots-camera-host",
+        default="127.0.0.1",
+        help="Host for ArduPilot Webots TCP camera stream.",
+    )
+    parser.add_argument(
+        "--webots-camera-port",
+        type=int,
+        default=5599,
+        help="Port for ArduPilot Webots TCP camera stream.",
+    )
+    parser.add_argument(
+        "--webots-camera-encoding",
+        choices=["gray8", "rgb24"],
+        default="gray8",
+        help="Camera stream payload format. Upstream iris_camera.wbt uses gray8.",
+    )
+    parser.add_argument(
+        "--yolo-model",
+        default="",
+        help="Path to YOLO gate model, required for --detector webots-yolo.",
+    )
+    parser.add_argument(
+        "--yolo-confidence",
+        type=float,
+        default=0.35,
+        help="Minimum YOLO confidence used before GateDetection conversion.",
+    )
+    parser.add_argument(
+        "--yolo-imgsz",
+        type=int,
+        default=640,
+        help="YOLO inference image size.",
+    )
+    parser.add_argument(
+        "--yolo-device",
+        default="",
+        help="Optional YOLO device string such as cpu, cuda, or cuda:0.",
+    )
+    parser.add_argument(
+        "--gate-class-names",
+        default="gate",
+        help="Comma-separated YOLO class names accepted as gates. Empty accepts all.",
+    )
+    parser.add_argument(
+        "--gate-class-ids",
+        default="",
+        help="Comma-separated YOLO class ids accepted as gates.",
+    )
     return parser
 
 
@@ -95,6 +158,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 send_commands=args.send_commands,
                 course_forward_x=args.course_forward_x,
                 course_forward_y=args.course_forward_y,
+                webots_camera_host=args.webots_camera_host,
+                webots_camera_port=args.webots_camera_port,
+                webots_camera_encoding=args.webots_camera_encoding,
+                yolo_model_path=args.yolo_model,
+                yolo_confidence=args.yolo_confidence,
+                yolo_image_size_px=args.yolo_imgsz,
+                yolo_device=args.yolo_device,
+                yolo_gate_class_names=_csv_strings(args.gate_class_names),
+                yolo_gate_class_ids=_csv_ints(args.gate_class_ids),
             )
         ).run()
         return 0 if result.completed else 2

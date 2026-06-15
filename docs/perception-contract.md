@@ -4,11 +4,25 @@ The autonomy code expects a gate detector, not a specific neural-network runtime
 
 ## Input
 
-The future detector may consume:
+The detector may consume:
 
 - Logitech C920 Pro RGB frames on real hardware.
 - Webots RGB camera frames in simulation.
 - Recorded frames for tests or tuning.
+
+Current implemented simulation path:
+
+```text
+webots/worlds/iris_camera.wbt
+-> TCP camera stream on 127.0.0.1:5599
+-> WebotsTcpCameraClient
+-> YoloGateDetector
+-> GateDetection
+```
+
+The upstream ArduPilot Webots camera stream is grayscale. The current adapter
+expands it to three channels before YOLO. Treat this as simulation wiring and
+shape detection, not as final RGB-camera validation.
 
 ## Output
 
@@ -31,6 +45,7 @@ The bounding box should cover the visible gate frame, not the empty hole inside 
 
 - Pick the best gate candidate in the current frame.
 - Filter by confidence.
+- Filter by gate class name or class id.
 - Fill timestamps from the camera or monotonic clock.
 - Avoid changing vehicle state.
 

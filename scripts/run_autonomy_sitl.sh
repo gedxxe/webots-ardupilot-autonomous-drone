@@ -16,6 +16,14 @@ LOOP_HZ="${LOOP_HZ:-20}"
 MAX_RUNTIME="${MAX_RUNTIME:-180}"
 COURSE_FORWARD_X="${COURSE_FORWARD_X:-1.0}"
 COURSE_FORWARD_Y="${COURSE_FORWARD_Y:-0.0}"
+WEBOTS_CAMERA_HOST="${WEBOTS_CAMERA_HOST:-127.0.0.1}"
+WEBOTS_CAMERA_PORT="${WEBOTS_CAMERA_PORT:-5599}"
+WEBOTS_CAMERA_ENCODING="${WEBOTS_CAMERA_ENCODING:-gray8}"
+YOLO_CONFIDENCE="${YOLO_CONFIDENCE:-0.35}"
+YOLO_IMGSZ="${YOLO_IMGSZ:-640}"
+YOLO_GATE_CLASS_NAMES="${YOLO_GATE_CLASS_NAMES:-gate}"
+YOLO_GATE_CLASS_IDS="${YOLO_GATE_CLASS_IDS:-}"
+YOLO_DEVICE="${YOLO_DEVICE:-}"
 
 resolve_autonomy_launcher() {
   if command -v drone-autonomy >/dev/null 2>&1; then
@@ -73,7 +81,22 @@ cmd=(
   --max-runtime "${MAX_RUNTIME}"
   --course-forward-x "${COURSE_FORWARD_X}"
   --course-forward-y "${COURSE_FORWARD_Y}"
+  --webots-camera-host "${WEBOTS_CAMERA_HOST}"
+  --webots-camera-port "${WEBOTS_CAMERA_PORT}"
+  --webots-camera-encoding "${WEBOTS_CAMERA_ENCODING}"
+  --yolo-confidence "${YOLO_CONFIDENCE}"
+  --yolo-imgsz "${YOLO_IMGSZ}"
+  --gate-class-names "${YOLO_GATE_CLASS_NAMES}"
+  --gate-class-ids "${YOLO_GATE_CLASS_IDS}"
 )
+
+if [[ -n "${YOLO_MODEL_PATH:-}" ]]; then
+  cmd+=(--yolo-model "${YOLO_MODEL_PATH}")
+fi
+
+if [[ -n "${YOLO_DEVICE}" ]]; then
+  cmd+=(--yolo-device "${YOLO_DEVICE}")
+fi
 
 if [[ "${SEND_COMMANDS}" == "1" ]]; then
   cmd+=(--send-commands)
