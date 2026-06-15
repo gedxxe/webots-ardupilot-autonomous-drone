@@ -2,7 +2,8 @@
 
 ## `drone-autonomy: command not found`
 
-Activate the virtual environment and install the package:
+The package entry point is not installed in the active shell. Activate the
+virtual environment and install the package:
 
 ```bash
 cd /path/to/WeBots_Ardupilot
@@ -14,6 +15,25 @@ Alternative:
 
 ```bash
 python -m drone_autonomy.cli --mode heartbeat
+```
+
+If the error came from `scripts/run_autonomy_sitl.sh`, update to the latest repo
+version first. The script now falls back to running `python -m
+drone_autonomy.cli` from `src/` when `drone-autonomy` is not in `PATH`.
+
+If you want to reuse the ArduPilot virtualenv on the DATA partition:
+
+```bash
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+source /media/gedxxe/DATA/venv-ardupilot/bin/activate
+pip install -e ".[dev]"
+scripts/run_autonomy_sitl.sh
+```
+
+Or set an explicit Python path in `configs/autonomy_runtime.env`:
+
+```text
+PYTHON_BIN="/media/gedxxe/DATA/venv-ardupilot/bin/python"
 ```
 
 ## `ModuleNotFoundError: No module named 'pymavlink'`

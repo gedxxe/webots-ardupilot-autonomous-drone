@@ -257,6 +257,21 @@ Dry-run:
 scripts/run_autonomy_sitl.sh
 ```
 
+The script prefers the installed `drone-autonomy` command. If that command is
+not in `PATH`, it falls back to a Python module launch from `src/`. Make sure the
+selected Python environment still has `pymavlink` installed through:
+
+```bash
+pip install -e ".[dev]"
+```
+
+If you reuse the ArduPilot virtualenv instead of this repo's `.venv`, set this
+in `configs/autonomy_runtime.env`:
+
+```text
+PYTHON_BIN="/media/gedxxe/DATA/venv-ardupilot/bin/python"
+```
+
 Commanded SITL motion:
 
 ```bash
