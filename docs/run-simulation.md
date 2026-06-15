@@ -265,6 +265,22 @@ selected Python environment still has `pymavlink` installed through:
 pip install -e ".[dev]"
 ```
 
+If you previously saw this error:
+
+```text
+scripts/run_autonomy_sitl.sh: line 37: exec: drone-autonomy: not found
+```
+
+pull the latest launcher fix and retry from an activated Python environment:
+
+```bash
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+git pull
+source .venv/bin/activate
+pip install -e ".[dev]"
+scripts/run_autonomy_sitl.sh
+```
+
 If you reuse the ArduPilot virtualenv instead of this repo's `.venv`, set this
 in `configs/autonomy_runtime.env`:
 
