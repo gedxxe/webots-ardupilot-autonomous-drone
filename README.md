@@ -25,7 +25,7 @@ Webots
 +-- scripts/                 # Launch and smoke-test scripts
 +-- src/drone_autonomy/      # Python companion/autonomy package
 +-- tests/                   # Unit tests for local autonomy code
-+-- webots/                  # Empty placeholders for user-provided Webots assets
++-- webots/                  # Vendored ArduPilot Webots_Python baseline assets
 ```
 
 ## Quick Start
@@ -90,12 +90,15 @@ takeoff -> seek gate 1 -> center -> pass -> adaptive acquire gate 2
 fallback: adaptive acquire gate 2 -> slow seek gate 2 if detection times out
 ```
 
-Webots worlds are intentionally left empty for the user to add later.
+The `webots/` directory contains a full vendored copy of ArduPilot's Webots
+Python example. Use it for baseline SITL tests, then add custom gate worlds
+after the baseline works.
 
 Read these before running motion tests:
 
 - [docs/run-simulation.md](docs/run-simulation.md): exact step-by-step runbook.
 - [docs/main-logic-map.md](docs/main-logic-map.md): map of runtime, mission, MAVLink, and detector code.
+- [docs/webots-source-sync.md](docs/webots-source-sync.md): how the vendored Webots tree is sourced and refreshed.
 - [docs/troubleshooting.md](docs/troubleshooting.md): common failures and fixes.
 - [docs/simulation-audit.md](docs/simulation-audit.md): readiness and known risk list.
 

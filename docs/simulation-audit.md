@@ -33,11 +33,20 @@ Before `--send-commands`:
 
 ## Still Required Outside Code
 
-- Custom Webots world.
 - Real or trained YOLOv8n gate model.
 - Camera adapter from Webots frames to the detector.
 - ArduPilot SITL running and publishing MAVLink on the configured UDP endpoint.
 - Correct Webots course alignment relative to `LOCAL_POSITION_NED`.
+
+## Available Baseline Webots Assets
+
+- Vendored ArduPilot Webots Python example in `webots/`.
+- Baseline Iris world at `webots/worlds/iris.wbt`.
+- Camera-capable examples at `webots/worlds/iris_camera.wbt` and
+  `webots/worlds/iris_depth_camera.wbt`.
+- Params at `webots/params/iris.parm`.
+
+Custom two-gate worlds are still future work.
 
 ## Not Yet Implemented in Code
 

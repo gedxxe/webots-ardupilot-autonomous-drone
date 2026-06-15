@@ -41,18 +41,13 @@ mode land
 
 ## Webots SITL Check
 
-For the first baseline test, use the Webots example directly from the ArduPilot
-checkout. Do not copy only part of `libraries/SITL/examples/Webots_Python` into
-this repository, because partial copies commonly break PROTO, mesh, texture,
-controller, or parameter-file references.
-
-This repository's `webots/` directory is reserved for custom worlds/assets after
-the upstream ArduPilot example works.
+This repository vendors a full copy of ArduPilot's `Webots_Python` example under
+`webots/`. Use this local copy for baseline tests and future custom worlds.
 
 Open Webots first and load:
 
 ```text
-~/ardupilot/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
+<repo>/webots/worlds/iris.wbt
 ```
 
 Then run from this repository:
@@ -61,6 +56,10 @@ Then run from this repository:
 cp configs/sitl_webots.env.example configs/sitl_webots.env
 scripts/run_sitl_webots.sh
 ```
+
+`ARDUPILOT_HOME` still points to the external ArduPilot checkout because SITL and
+`sim_vehicle.py` run from ArduPilot. `WEBOTS_EXAMPLE_HOME` points to this repo's
+vendored `webots/` directory.
 
 The companion app expects MAVLink telemetry on:
 

@@ -151,28 +151,35 @@ Check:
 
 ## Iris vehicle or parts are missing in Webots
 
-Most likely the Webots example was copied partially.
+Most likely the vendored Webots tree was replaced by a partial copy or Webots is
+opening the wrong world path.
 
-For baseline testing, open the world directly from the ArduPilot checkout:
-
-```text
-<ARDUPILOT_HOME>/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
-```
-
-Do not point baseline SITL at:
+For baseline testing, open the world from this repo:
 
 ```text
-WeBots_Ardupilot/webots/params/iris.parm
+<repo>/webots/worlds/iris.wbt
 ```
 
-unless you intentionally copied and validated the full Webots example tree.
-The safe default is:
+Make sure these files exist:
+
+```text
+webots/controllers/ardupilot_vehicle_controller/ardupilot_vehicle_controller.py
+webots/params/iris.parm
+webots/protos/Iris.proto
+webots/protos/meshes/iris.dae
+webots/worlds/iris.wbt
+```
+
+The safe config is:
 
 ```text
 ARDUPILOT_HOME="/media/gedxxe/DATA/ardupilot"
-WEBOTS_EXAMPLE_RELATIVE="libraries/SITL/examples/Webots_Python"
+WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
 WEBOTS_PARAM_FILE="params/iris.parm"
 ```
+
+If the tree looks incomplete, re-sync from the official ArduPilot
+`libraries/SITL/examples/Webots_Python` tree. See `docs/webots-source-sync.md`.
 
 ## Tests skip MAVLink adapter tests
 

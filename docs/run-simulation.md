@@ -4,20 +4,19 @@ Runbook ini menjelaskan cara menjalankan kode simulasi dari nol sampai autonomy 
 
 Status saat ini:
 
-- Webots world custom belum ada.
+- Webots baseline world sudah tersedia dari vendored ArduPilot Webots example.
 - YOLO model belum ada.
 - Camera adapter belum ada.
 - Runtime tetap bisa diuji dengan ArduPilot Webots example dan synthetic gate detector.
 
 Baseline rule:
 
-- For the first Webots/SITL validation, use the ArduPilot Webots example in the
-  ArduPilot checkout.
-- Do not copy a partial Webots example into this repo. Partial copies can make
-  the Iris vehicle disappear because `.wbt`, `.proto`, meshes, textures,
-  controllers, libraries, and params reference each other.
-- This repo's `webots/` directory is for later custom worlds/assets after the
-  upstream ArduPilot example works.
+- This repo now contains a full vendored copy of ArduPilot's Webots Python
+  example in `webots/`.
+- For baseline testing, open `webots/worlds/iris.wbt` from this repo.
+- Do not replace it with partial copies. Partial copies can make the Iris
+  vehicle disappear because `.wbt`, `.proto`, meshes, textures, controllers,
+  scripts, and params reference each other.
 
 Synthetic detector hanya untuk membuktikan wiring `MAVLink -> telemetry -> mission -> command`. Jangan pakai synthetic detector untuk menilai performa gate detection.
 
@@ -74,6 +73,7 @@ Minimal isi yang harus benar:
 
 ```text
 ARDUPILOT_HOME="<absolute path to your ArduPilot checkout>"
+WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
 MAVLINK_OUT="udp:127.0.0.1:14550"
 ```
 
@@ -101,7 +101,7 @@ webots
 Open the ArduPilot example world:
 
 ```text
-<ARDUPILOT_HOME>/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
+<repo>/webots/worlds/iris.wbt
 ```
 
 Press Run in Webots.
@@ -110,6 +110,7 @@ Expected:
 
 - Webots GUI terbuka.
 - World `iris.wbt` loaded.
+- Iris model appears in the world.
 - Simulation is running.
 
 ## Step 2: Start ArduPilot SITL

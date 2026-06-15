@@ -19,7 +19,8 @@ The same high-level code should work in Webots/ArduPilot SITL and later on a rea
 
 ## Non-Negotiable Boundaries
 
-- Keep `webots/` empty except placeholders until the user adds worlds and assets.
+- Keep `webots/` as a full vendored copy of ArduPilot's `Webots_Python`
+  example. Do not replace it with partial copies.
 - Do not modify ArduPilot source by default.
 - Keep hardware, simulator, perception, control, and mission logic separated.
 - Do not hard-wire YOLO, OpenCV, Webots, or MAVLink details into the mission state machine.
@@ -69,4 +70,6 @@ The first implementation uses image-based visual servoing:
 - If camera calibration is unknown, avoid pretending to know metric distance from RGB alone.
 - If sensor fusion is required, document whether it is ArduPilot EKF fusion or a local estimator before adding code.
 - If Webots worlds are absent, do not invent world file names.
+- If Webots assets look incomplete, re-sync from ArduPilot
+  `libraries/SITL/examples/Webots_Python` instead of patching paths ad hoc.
 - If real-hardware behavior is discussed, mark it as a future adapter unless implemented.
