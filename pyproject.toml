@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "webots-ardupilot-autonomy"
+version = "0.1.0"
+description = "Python companion application scaffold for Webots and ArduPilot SITL autonomous drone simulation."
+requires-python = ">=3.12"
+dependencies = [
+    "pymavlink>=2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+drone-autonomy = "drone_autonomy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

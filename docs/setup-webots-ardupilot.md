@@ -1,0 +1,69 @@
+# Webots and ArduPilot SITL Setup
+
+This repo assumes Ubuntu 24.04, Python 3.12, Webots, and an external ArduPilot checkout.
+
+## External ArduPilot Checkout
+
+```bash
+cd ~
+git clone https://github.com/ArduPilot/ardupilot.git
+cd ~/ardupilot
+git submodule update --init --recursive
+Tools/environment_install/install-prereqs-ubuntu.sh -y
+source ~/.profile
+```
+
+Build ArduCopter SITL:
+
+```bash
+cd ~/ardupilot
+./waf configure --board sitl
+./waf copter
+```
+
+## Baseline SITL Check
+
+Before using Webots, validate plain SITL:
+
+```bash
+cd ~/ardupilot/ArduCopter
+../Tools/autotest/sim_vehicle.py --map --console -w
+```
+
+In MAVProxy:
+
+```text
+mode guided
+arm throttle
+takeoff 10
+mode land
+```
+
+## Webots SITL Check
+
+Open Webots first and load:
+
+```text
+~/ardupilot/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
+```
+
+Then run from this repository:
+
+```bash
+cp configs/sitl_webots.env.example configs/sitl_webots.env
+scripts/run_sitl_webots.sh
+```
+
+The companion app expects MAVLink telemetry on:
+
+```text
+udp:127.0.0.1:14550
+```
+
+## Smoke Test
+
+```bash
+python -m drone_autonomy --connection udp:127.0.0.1:14550 --mode heartbeat
+```
+
+Expected result: the app prints heartbeat and telemetry messages from ArduPilot.

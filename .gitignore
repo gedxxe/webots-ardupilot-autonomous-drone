@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local simulator configuration
+configs/sitl_webots.env
+configs/autonomy_runtime.env
+
+# Webots generated/runtime files
+*.wbproj
+*.wbt~
+*.wbo~
+*.wbtemp
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
