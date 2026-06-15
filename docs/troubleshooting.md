@@ -181,6 +181,26 @@ WEBOTS_PARAM_FILE="params/iris.parm"
 If the tree looks incomplete, re-sync from the official ArduPilot
 `libraries/SITL/examples/Webots_Python` tree. See `docs/webots-source-sync.md`.
 
+## The `webots/` folder timestamp did not change
+
+Do not use the folder timestamp as the audit signal. A copy from another Git
+checkout can preserve old file timestamps, and Git can also check out files with
+timestamps that do not obviously reflect the latest repo operation.
+
+Use these checks instead:
+
+```bash
+git ls-files webots | wc -l
+```
+
+Expected:
+
+```text
+36
+```
+
+For the official upstream compare command, see `docs/webots-source-sync.md`.
+
 ## Webots complains about `StraightRoadSegment`
 
 The upstream ArduPilot example worlds reference Cyberbotics road PROTOs through

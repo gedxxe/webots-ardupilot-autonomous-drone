@@ -2,6 +2,15 @@
 
 ## Pre-Run Checklist
 
+Repository baseline:
+
+- `webots/` has been compared against the official ArduPilot
+  `libraries/SITL/examples/Webots_Python` tracked tree.
+- Expected tracked Webots file count: 36.
+- Current compare result: 0 missing upstream files, 0 extra local tracked files.
+- Folder timestamp is not used as evidence because copied files can retain
+  source modification times.
+
 Before any autonomy command test:
 
 - Webots is installed and can open the target world.
@@ -47,6 +56,10 @@ Before `--send-commands`:
 - Params at `webots/params/iris.parm`.
 
 Custom two-gate worlds are still future work.
+
+The baseline Webots tree is complete for ArduPilot's upstream examples. It does
+not mean the two-gate competition world exists yet; that world should be added
+later under `webots/worlds/` with matching local assets.
 
 ## Not Yet Implemented in Code
 

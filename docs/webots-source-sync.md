@@ -18,6 +18,28 @@ Official upstream URL:
 https://github.com/ArduPilot/ardupilot/tree/master/libraries/SITL/examples/Webots_Python
 ```
 
+## Current Audit Result
+
+Final audit result for the vendored tree:
+
+```text
+official upstream tracked files: 36
+local repo tracked files:        36
+missing upstream files:          0
+extra local tracked files:       0
+```
+
+The upstream head used for the internet verification was:
+
+```text
+ArduPilot master: 988d7b01c75fc0d76990308d10a867f646b8e1e2
+```
+
+Folder timestamps are not a reliable completeness signal. Windows copy
+operations and Git checkout behavior can preserve file modification timestamps
+from the source tree. Use `git ls-files`, file counts, and upstream comparison
+instead.
+
 ## Required Tree
 
 The vendored tree should contain these directories:
@@ -82,3 +104,24 @@ foreach ($file in $files) {
 ```
 
 Review `git status` after sync before committing.
+
+## How to Audit Against Upstream
+
+Use this PowerShell check from `D:\WeBots_Ardupilot` when still on Windows:
+
+```powershell
+$api='https://api.github.com/repos/ArduPilot/ardupilot/git/trees/master?recursive=1'
+$tree=(Invoke-RestMethod -Headers @{ 'User-Agent'='webots-audit' } -Uri $api).tree
+$prefix='libraries/SITL/examples/Webots_Python/'
+$official=$tree |
+  Where-Object { $_.type -eq 'blob' -and $_.path.StartsWith($prefix) } |
+  ForEach-Object { $_.path.Substring($prefix.Length).Replace('/','\') } |
+  Sort-Object
+$local=git ls-files webots |
+  ForEach-Object { $_.Substring('webots/'.Length).Replace('/','\') } |
+  Sort-Object
+Compare-Object $official $local
+```
+
+Expected output is empty. Empty output means the local `webots/` tracked files
+match the official ArduPilot `Webots_Python` tracked files.

@@ -52,10 +52,22 @@ Pastikan:
 - Python environment repo ini sudah install dependencies.
 - `configs/sitl_webots.env` sudah dibuat dari example.
 
+Expected folder layout when using your DATA partition:
+
+```text
+/media/gedxxe/DATA/ardupilot
+/media/gedxxe/DATA/venv-ardupilot
+/media/gedxxe/DATA/WeBots_Ardupilot
+```
+
+This repo does not need to live inside the ArduPilot checkout. ArduPilot stays
+external, while this repo owns the companion autonomy code and vendored Webots
+baseline assets.
+
 Install repo dependencies:
 
 ```bash
-cd /path/to/WeBots_Ardupilot
+cd /media/gedxxe/DATA/WeBots_Ardupilot
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
@@ -94,15 +106,26 @@ ARDUPILOT_HOME="/media/gedxxe/DATA/ardupilot"
 ARDUPILOT_HOME="/mnt/d/ardupilot"
 ```
 
+Do not point `WEBOTS_EXAMPLE_HOME` to a half-copied Webots folder. The default
+below is the safest baseline because this repo already vendors the complete
+ArduPilot example:
+
+```text
+WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
+WEBOTS_WORLD="worlds/iris.wbt"
+WEBOTS_PARAM_FILE="params/iris.parm"
+```
+
 ## Step 1: Open Webots
 
 Terminal A:
 
 ```bash
-webots
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+webots webots/worlds/iris.wbt
 ```
 
-Open the ArduPilot example world:
+Alternative if you prefer opening from the Webots GUI:
 
 ```text
 <repo>/webots/worlds/iris.wbt
@@ -122,9 +145,15 @@ Expected:
 Terminal B:
 
 ```bash
-cd /path/to/WeBots_Ardupilot
+cd /media/gedxxe/DATA/WeBots_Ardupilot
 source .venv/bin/activate
 scripts/run_sitl_webots.sh
+```
+
+If the DATA partition is mounted with `noexec`, run the script through Bash:
+
+```bash
+bash scripts/run_sitl_webots.sh
 ```
 
 Expected:
@@ -141,7 +170,7 @@ Do not continue until SITL is alive.
 Terminal C:
 
 ```bash
-cd /path/to/WeBots_Ardupilot
+cd /media/gedxxe/DATA/WeBots_Ardupilot
 source .venv/bin/activate
 drone-autonomy --mode heartbeat --connection udp:127.0.0.1:14550
 ```
