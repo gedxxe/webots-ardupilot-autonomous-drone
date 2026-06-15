@@ -33,13 +33,14 @@ continuing.
 - YOLO-to-`GateDetection` adapter with confidence and class filtering.
 - `webots-yolo` runtime glue that keeps camera/model details outside the
   mission state machine.
+- Experimental `RobotstadiumGoal` Webots PROTO and two goal instances in
+  `webots/worlds/iris_camera.wbt`.
 
 ## Not Implemented Yet
 
 - A trained/provided gate YOLO model file.
-- Committed custom two-gate Webots world and gate assets. Local Webots edits may
-  exist while testing; do not treat them as project baseline until they are
-  intentionally staged, documented, and committed.
+- A validated competition-grade two-gate Webots course. The current goal objects
+  are experimental geometry for perception/world iteration.
 - True RGB Webots stream. Upstream `iris_camera.wbt` currently streams
   grayscale; the adapter expands `gray8` to three channels for YOLO.
 - Real-hardware C920/OpenCV camera source.

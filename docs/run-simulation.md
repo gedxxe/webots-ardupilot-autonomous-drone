@@ -363,8 +363,11 @@ Important:
 - The upstream ArduPilot Webots camera stream is grayscale. The adapter expands
   it to three channels for YOLO. This tests geometry/perception wiring, not true
   RGB color behavior.
-- If no gate model exists or no gate is visible, the mission should stay in
-  `seek_gate` and keep scanning.
+- `iris_camera.wbt` includes experimental `RobotstadiumGoal` objects, but YOLO
+  will not detect them as gates until the model is trained or configured for
+  that class.
+- If no gate model exists, the mission should stay in `seek_gate` and keep
+  scanning.
 - Keep `SEND_COMMANDS="0"` until the detector is stable.
 
 See `docs/webots-yolo-pipeline.md` for the full detector pipeline and class

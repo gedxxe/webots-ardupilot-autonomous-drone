@@ -48,7 +48,7 @@ Before `--send-commands`:
 - `pip install -e ".[vision]"` before using `--detector webots-yolo`.
 - ArduPilot SITL running and publishing MAVLink on the configured UDP endpoint.
 - Correct Webots course alignment relative to `LOCAL_POSITION_NED`.
-- Custom two-gate Webots world or added gate assets.
+- Trained/provided YOLO gate model that recognizes the experimental goal asset.
 
 ## Available Baseline Webots Assets
 
@@ -57,12 +57,14 @@ Before `--send-commands`:
 - Camera-capable examples at `webots/worlds/iris_camera.wbt` and
   `webots/worlds/iris_depth_camera.wbt`.
 - Params at `webots/params/iris.parm`.
+- Experimental gate asset at `webots/protos/RobotstadiumGoal.proto`.
+- `webots/worlds/iris_camera.wbt` includes two experimental
+  `RobotstadiumGoal` instances for early perception/world iteration.
 
-Custom two-gate worlds are still future work.
-
-The baseline Webots tree is complete for ArduPilot's upstream examples. It does
-not mean the two-gate competition world exists yet; that world should be added
-later under `webots/worlds/` with matching local assets.
+The baseline Webots tree is complete for ArduPilot's upstream examples. The
+current `RobotstadiumGoal` additions are experimental and still need model
+training, detector validation, and course-direction verification before they are
+treated as a competition-grade world.
 
 ## Not Yet Implemented in Code
 

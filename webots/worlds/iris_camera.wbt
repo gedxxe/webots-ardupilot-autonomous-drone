@@ -1,4 +1,4 @@
-#VRML_SIM R2023a utf8
+#VRML_SIM R2025a utf8
 
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
@@ -14,6 +14,7 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/factory/forklift/protos/Forklift.proto"
 EXTERNPROTO "../protos/Iris.proto"
 EXTERNPROTO "../protos/ArucoMarker.proto"
+EXTERNPROTO "../protos/RobotstadiumGoal.proto"
 
 WorldInfo {
   title "Iris Ardupilot"
@@ -21,8 +22,8 @@ WorldInfo {
   FPS 20
 }
 Viewpoint {
-  orientation 0.10264123808602478 -0.7648124131744727 -0.6360241732028804 5.867275660921915
-  position -2.488925008027789 0.29237831017431365 2.067754838508868
+  orientation -0.02574330891939123 -0.9678327232156422 0.2502740536269695 6.07142184662516
+  position -5.133208535399729 4.5160726287544986 1.5290217188477306
   follow "Iris"
   followSmoothness 0.01
 }
@@ -42,6 +43,10 @@ StraightRoadSegment {
   rightBorder FALSE
   leftBorder FALSE
   length 140
+}
+RobotstadiumGoal {
+  translation 12 6 0
+  name "robotstadium goal(1)"
 }
 Rabbit {
   translation 4.68362 1.88178 0.88
@@ -83,8 +88,12 @@ AdvertisingBoard {
 Table {
   translation 0 0.92 0
 }
+RobotstadiumGoal {
+  translation 3 6 0
+}
 Iris {
-  translation 0.0702495 1.45039 0.8
+  translation -2.3383017442409746 5.2476491305881945 0.05496321250000001
+  rotation 8.434026926440774e-17 -8.230475713780888e-17 1 0.0832512128621336
   controller "ardupilot_vehicle_controller"
   controllerArgs [
     "--motors"
