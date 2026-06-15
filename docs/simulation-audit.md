@@ -63,6 +63,8 @@ Custom two-gate worlds are still future work.
 - Body-frame velocity signs: forward, right, down, and yaw-rate.
 - `COURSE_FORWARD_X/Y` projection matches the actual gate-line direction.
 - `LOCAL_POSITION_NED.z` behaves as expected with Webots.
+- Webots can resolve external Cyberbotics `EXTERNPROTO` dependencies used by the
+  upstream example worlds, such as `StraightRoadSegment`.
 - ArduPilot accepts `MAV_CMD_NAV_TAKEOFF` and body velocity commands in GUIDED mode.
 - Gate pass distance and final forward exit distance are realistic for the world scale.
 - Synthetic detector should be replaced by real detector before judging gate behavior.

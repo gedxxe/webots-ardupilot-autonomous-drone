@@ -181,6 +181,20 @@ WEBOTS_PARAM_FILE="params/iris.parm"
 If the tree looks incomplete, re-sync from the official ArduPilot
 `libraries/SITL/examples/Webots_Python` tree. See `docs/webots-source-sync.md`.
 
+## Webots complains about `StraightRoadSegment`
+
+The upstream ArduPilot example worlds reference Cyberbotics road PROTOs through
+`EXTERNPROTO` URLs, for example:
+
+```text
+https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/road/protos/StraightRoadSegment.proto
+```
+
+This is not an Iris asset corruption. It means Webots needs internet access or a
+cached copy of that external Cyberbotics PROTO. If this blocks startup in
+Ubuntu, first confirm the machine can reach GitHub/raw.githubusercontent.com,
+then reopen the world.
+
 ## Tests skip MAVLink adapter tests
 
 The tests are skipped when `pymavlink` is not installed in the test environment.
