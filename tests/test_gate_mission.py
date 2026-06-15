@@ -31,6 +31,7 @@ def build_mission() -> GateAutonomyMission:
     )
     return GateAutonomyMission(
         GateMissionConfig(
+            takeoff_required_stable_ticks=1,
             required_detection_ticks=1,
             required_aligned_ticks=1,
             gate_pass_distance_m=1.0,
@@ -76,7 +77,46 @@ def test_mission_requests_guided_then_arm_then_takeoff() -> None:
 
     output = mission.update(telemetry(2.0, altitude_m=0.0, mode="GUIDED", armed=True))
     assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.TAKEOFF
+    assert output.command.kind == CommandKind.BODY_VELOCITY
+    assert output.command.body_vz_m_s < 0.0
+
+
+def test_controlled_takeoff_slows_and_settles_before_seek() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=2,
+            takeoff_settle_tolerance_m=0.05,
+            takeoff_max_climb_m_s=0.35,
+        )
+    )
+
+    output = mission.update(telemetry(0.0, altitude_m=0.20))
+    assert output.phase == MissionPhase.TAKEOFF
+    assert output.command.kind == CommandKind.BODY_VELOCITY
+    assert output.command.body_vz_m_s == -0.35
+
+    output = mission.update(telemetry(1.0, altitude_m=0.96))
+    assert output.phase == MissionPhase.TAKEOFF
+    assert output.command.body_vz_m_s == 0.0
+
+    output = mission.update(telemetry(1.1, altitude_m=1.01))
+    assert output.phase == MissionPhase.SEEK_GATE
+
+
+def test_controlled_takeoff_recovers_from_overshoot_before_seek() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=1,
+            takeoff_settle_tolerance_m=0.05,
+            takeoff_max_descent_m_s=0.35,
+        )
+    )
+
+    output = mission.update(telemetry(0.0, altitude_m=3.0))
+
+    assert output.phase == MissionPhase.TAKEOFF
+    assert output.command.kind == CommandKind.BODY_VELOCITY
+    assert output.command.body_vz_m_s == 0.35
 
 
 def test_nominal_two_gate_sequence_reaches_landing() -> None:

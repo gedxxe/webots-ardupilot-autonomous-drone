@@ -107,7 +107,9 @@ Check:
 - Mode actually changed to `GUIDED`.
 - ArduPilot accepted arm command.
 - MAVProxy console does not show prearm failures.
-- `MAV_CMD_NAV_TAKEOFF` is accepted for the current vehicle/mode.
+- Runtime prints `sent phase=takeoff ... cmd=body_velocity`.
+- Body-frame z velocity sign is correct: negative `body_vz_m_s` means climb.
+- ArduPilot accepts guided body-velocity commands while armed.
 
 Current code does not yet parse `COMMAND_ACK`, so MAVProxy output is the best immediate clue.
 

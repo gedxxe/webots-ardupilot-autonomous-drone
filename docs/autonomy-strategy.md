@@ -61,6 +61,20 @@ If gate 2 is detected for the required number of ticks, the mission brakes brief
 
 ## Altitude Control
 
+Takeoff uses a bounded vertical velocity profile instead of relying on a single
+aggressive `MAV_CMD_NAV_TAKEOFF` for the 1 m task. The profile is proportional
+with saturation, a settle band, and required stable ticks:
+
+```text
+large altitude error -> capped climb/descent velocity
+near target          -> zero vertical command and settle counter
+stable enough        -> enter SEEK_GATE
+```
+
+This is intentionally not a full PID in the companion process. ArduPilot owns
+the attitude, motor, and vertical inner loops; the mission only shapes safe
+setpoints.
+
 The mission maintains altitude during search, pass, adaptive acquire, brake, and final forward exit by adding a small vertical velocity correction toward the takeoff altitude. During visual centering, vertical image correction is allowed but bounded by altitude guards.
 
 The altitude input should be fused local telemetry from ArduPilot or a simulator adapter. The mission must not consume raw GPS, raw rangefinder, or raw optical-flow samples directly.
