@@ -149,6 +149,31 @@ Check:
 - ArduPilot was launched with `--model webots-python`.
 - The `iris.parm` file path in `configs/sitl_webots.env` is correct.
 
+## Iris vehicle or parts are missing in Webots
+
+Most likely the Webots example was copied partially.
+
+For baseline testing, open the world directly from the ArduPilot checkout:
+
+```text
+<ARDUPILOT_HOME>/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
+```
+
+Do not point baseline SITL at:
+
+```text
+WeBots_Ardupilot/webots/params/iris.parm
+```
+
+unless you intentionally copied and validated the full Webots example tree.
+The safe default is:
+
+```text
+ARDUPILOT_HOME="/media/gedxxe/DATA/ardupilot"
+WEBOTS_EXAMPLE_RELATIVE="libraries/SITL/examples/Webots_Python"
+WEBOTS_PARAM_FILE="params/iris.parm"
+```
+
 ## Tests skip MAVLink adapter tests
 
 The tests are skipped when `pymavlink` is not installed in the test environment.

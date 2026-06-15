@@ -41,6 +41,14 @@ mode land
 
 ## Webots SITL Check
 
+For the first baseline test, use the Webots example directly from the ArduPilot
+checkout. Do not copy only part of `libraries/SITL/examples/Webots_Python` into
+this repository, because partial copies commonly break PROTO, mesh, texture,
+controller, or parameter-file references.
+
+This repository's `webots/` directory is reserved for custom worlds/assets after
+the upstream ArduPilot example works.
+
 Open Webots first and load:
 
 ```text

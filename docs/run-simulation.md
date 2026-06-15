@@ -9,6 +9,16 @@ Status saat ini:
 - Camera adapter belum ada.
 - Runtime tetap bisa diuji dengan ArduPilot Webots example dan synthetic gate detector.
 
+Baseline rule:
+
+- For the first Webots/SITL validation, use the ArduPilot Webots example in the
+  ArduPilot checkout.
+- Do not copy a partial Webots example into this repo. Partial copies can make
+  the Iris vehicle disappear because `.wbt`, `.proto`, meshes, textures,
+  controllers, libraries, and params reference each other.
+- This repo's `webots/` directory is for later custom worlds/assets after the
+  upstream ArduPilot example works.
+
 Synthetic detector hanya untuk membuktikan wiring `MAVLink -> telemetry -> mission -> command`. Jangan pakai synthetic detector untuk menilai performa gate detection.
 
 ## Mental Model
@@ -63,8 +73,21 @@ nano configs/sitl_webots.env
 Minimal isi yang harus benar:
 
 ```text
-ARDUPILOT_HOME="$HOME/ardupilot"
+ARDUPILOT_HOME="<absolute path to your ArduPilot checkout>"
 MAVLINK_OUT="udp:127.0.0.1:14550"
+```
+
+Examples:
+
+```text
+# Native Ubuntu home install
+ARDUPILOT_HOME="$HOME/ardupilot"
+
+# DATA partition mounted by Ubuntu
+ARDUPILOT_HOME="/media/gedxxe/DATA/ardupilot"
+
+# WSL-style mount
+ARDUPILOT_HOME="/mnt/d/ardupilot"
 ```
 
 ## Step 1: Open Webots
@@ -78,7 +101,7 @@ webots
 Open the ArduPilot example world:
 
 ```text
-~/ardupilot/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
+<ARDUPILOT_HOME>/libraries/SITL/examples/Webots_Python/worlds/iris.wbt
 ```
 
 Press Run in Webots.
