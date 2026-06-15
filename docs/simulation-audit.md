@@ -38,7 +38,7 @@ Before `--send-commands`:
 - MAVLink telemetry adapter for heartbeat, arm state, landed state, altitude, and forward position.
 - MAVLink command adapter for mode, arm, takeoff, land, and body-frame velocity.
 - Runtime loop that can run dry or send commands.
-- Synthetic gate detector for SITL wiring tests before YOLO/Webots camera integration.
+- Synthetic gate detector for SITL wiring tests that bypass real perception.
 - Webots TCP camera adapter for `iris_camera.wbt`.
 - YOLO gate detector wrapper that converts model boxes to `GateDetection`.
 

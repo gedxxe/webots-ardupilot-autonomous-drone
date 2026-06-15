@@ -2,6 +2,10 @@
 
 These notes are for AI agents and future maintainers working on this repository.
 
+Before making architecture claims, read `docs/project-status.md`. It records
+what is implemented, what is still missing, and which boundaries must not be
+blurred.
+
 ## Project Intent
 
 Build a simple but robust autonomous drone pipeline for a two-gate task:
@@ -50,6 +54,14 @@ The gate detector should return one `GateDetection` per frame:
 
 The detector should not decide flight phases. It only reports perception.
 
+Current detector modes:
+
+- `none`: no detections; mission should keep seeking.
+- `synthetic`: fake centered boxes for wiring tests only.
+- `webots-yolo`: Webots TCP camera stream plus YOLO wrapper. This is real
+  perception plumbing, but upstream `iris_camera.wbt` streams grayscale frames,
+  not true RGB.
+
 ## Current Strategy
 
 The first implementation uses image-based visual servoing:
@@ -65,11 +77,17 @@ The first implementation uses image-based visual servoing:
 
 ## Anti-Hallucination Rules
 
+- Treat `docs/project-status.md` as the first status checkpoint.
 - If a module is a placeholder, say it is a placeholder in code or docs.
 - If telemetry is required but not wired yet, model it explicitly as input.
 - If camera calibration is unknown, avoid pretending to know metric distance from RGB alone.
 - If sensor fusion is required, document whether it is ArduPilot EKF fusion or a local estimator before adding code.
-- If Webots worlds are absent, do not invent world file names.
+- If a custom two-gate Webots world is absent, do not invent world file names.
 - If Webots assets look incomplete, re-sync from ArduPilot
   `libraries/SITL/examples/Webots_Python` instead of patching paths ad hoc.
+- If `webots-yolo` is discussed, state that it requires an external model file
+  and that the current upstream camera stream is grayscale.
+- If Webots world/proto files are modified in the working tree, verify whether
+  they are intentional user design changes before staging. Do not mix accidental
+  Webots GUI churn with autonomy/code documentation commits.
 - If real-hardware behavior is discussed, mark it as a future adapter unless implemented.

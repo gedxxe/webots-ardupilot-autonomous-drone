@@ -18,7 +18,7 @@ class GateDetector(Protocol):
 
 
 class NullGateDetector:
-    """Placeholder detector used until YOLO/Webots camera integration exists."""
+    """Detector that intentionally returns no observations."""
 
     def detect(self, frame: object, now_s: float) -> GateDetection | None:
         return None

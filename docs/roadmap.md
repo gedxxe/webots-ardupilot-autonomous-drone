@@ -2,38 +2,44 @@
 
 ## Stage 1: Simulator Baseline
 
-- Webots launches and opens the Iris world.
-- ArduPilot SITL connects to Webots.
-- MAVProxy can arm, take off, and land the vehicle.
-- MAVLink output is available on UDP port `14550`.
+- Done: vendored ArduPilot Webots baseline tree.
+- Done: baseline Iris world path documented.
+- Done: SITL launch script points ArduPilot at the vendored Webots params/world.
+- User-validated: autonomy dry-run can run against SITL.
 
 ## Stage 2: Companion Telemetry
 
-- Python companion app receives heartbeat.
-- Telemetry loop can read attitude, position, mode, GPS, and battery messages.
-- Connection settings are centralized in config/env files.
+- Done: Python companion app receives heartbeat.
+- Done: `listen` mode can inspect raw MAVLink messages.
+- Done: runtime waits for `LOCAL_POSITION_NED` before mission decisions.
+- Done: connection settings are centralized in config/env files.
 
 ## Stage 3: Basic Autonomy Commands
 
-- Guided takeoff command.
-- Land command.
-- Velocity/body-frame command helpers.
-- Command acknowledgements are logged and validated.
+- Done: guided mode, arm, takeoff, land, and body-frame velocity command helpers.
+- Pending: `COMMAND_ACK` parsing, retry policy, and command timeout handling.
 
 ## Stage 4: Navigation Logic
 
-- Mission state machine.
-- Waypoint or local-position navigation.
-- Failsafe behavior for heartbeat loss, mode mismatch, and command timeout.
+- Done: deterministic mission state machine for the two-gate task.
+- Done: local forward-distance projection from `LOCAL_POSITION_NED`.
+- Done: adaptive next-gate acquire and brake-before-center.
+- Pending: lost-heartbeat failsafe in the process runtime.
+- Pending: automatic course-frame calibration.
 
 ## Stage 5: Sensors and Perception
 
-- Add Webots obstacle scenarios.
-- Add simulated range/camera feeds.
-- Integrate perception output into navigation constraints.
+- Done: synthetic detector for wiring tests.
+- Done: Webots `iris_camera.wbt` TCP camera adapter.
+- Done: YOLO-to-`GateDetection` adapter.
+- Pending: trained/provided gate model file.
+- Pending: custom two-gate Webots world and gate assets.
+- Pending: true RGB Webots stream or real camera source.
 
 ## Stage 6: Hardware Readiness
 
-- Separate simulator-only adapters from hardware-facing adapters.
-- Document Raspberry Pi deployment.
-- Preserve the same high-level autonomy API across SITL and hardware.
+- Done: mission/perception/adapter boundaries are separated.
+- Pending: C920/OpenCV hardware camera source.
+- Pending: Raspberry Pi deployment docs.
+- Pending: hardware safety procedure and launch profile.
+- Required invariant: preserve the same high-level autonomy API across SITL and hardware.

@@ -407,7 +407,7 @@ When the custom Webots world exists, this must be verified before trusting gate 
 `drone-autonomy --mode autonomy --detector synthetic`
 
 - Runs mission logic with synthetic gate detections.
-- Good for SITL wiring before YOLO exists.
+- Good for SITL wiring without camera/model I/O.
 
 `drone-autonomy --mode autonomy --detector webots-yolo`
 

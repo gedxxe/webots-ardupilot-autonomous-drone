@@ -29,13 +29,16 @@ perception -> control -> mission -> vehicle adapter
 - `mission` owns the state machine and decides what behavior is active.
 - `vehicle adapter` sends commands to ArduPilot through MAVLink.
 
-The current code implements `perception`, `control`, and `mission` contracts. The MAVLink command adapter is intentionally separate and can be added after SITL telemetry is validated.
+The current code implements `perception`, `control`, `mission`, and MAVLink
+adapter contracts. Runtime wiring decides whether commands are dry-run only or
+sent to ArduPilot.
 
 `GateAutonomyMission.update()` is non-blocking. It expects the runtime loop to provide the latest telemetry and gate detection, and it returns exactly one abstract command for that tick.
 
 ## Centering Control
 
-The centering controller uses image-based visual servoing. A YOLO detector later provides the gate bounding box. The controller computes:
+The centering controller uses image-based visual servoing. A detector provides
+the gate bounding box. The controller computes:
 
 - normalized horizontal error from image center,
 - normalized vertical error from image center,
@@ -73,8 +76,24 @@ The altitude input should be fused local telemetry from ArduPilot or a simulator
 - Gate clearance and final exit use forward distance from telemetry.
 - Landing is only commanded after the final forward exit distance is reached.
 
-## Future YOLOv8n Integration
+## YOLO and Camera Integration
 
-YOLOv8n should be wrapped behind the `GateDetector` protocol. The detector should return a `GateDetection`, not call ArduPilot or mutate mission state.
+YOLO is implemented behind the `GateDetection` contract:
 
-Keep detector-specific code in `src/drone_autonomy/perception/`. Keep model files outside source control unless the user explicitly wants them versioned.
+```text
+Webots TCP camera frame
+-> YoloGateDetector
+-> GateDetection
+-> MissionTelemetry.gate_detection
+```
+
+Detector-specific code stays in `src/drone_autonomy/perception/`. Model files
+stay outside source control unless the user explicitly wants them versioned.
+
+Current caveat: upstream `iris_camera.wbt` streams grayscale frames. The adapter
+expands those frames to three channels for YOLO, so this is a valid simulation
+wiring path but not final RGB-camera validation.
+
+Future camera work should replace only the frame source, for example with a
+C920/OpenCV adapter, while preserving the same `YoloGateDetector ->
+GateDetection -> mission` boundary.

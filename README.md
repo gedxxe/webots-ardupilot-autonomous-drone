@@ -11,9 +11,18 @@ Webots
   -> ArduPilot SITL
   -> MAVLink UDP
   -> Python companion application
-  -> RGB gate perception
+  -> gate perception
   -> visual centering + mission state machine
 ```
+
+Current simulation perception options are:
+
+- `synthetic`: fake centered detections for wiring tests.
+- `webots-yolo`: `iris_camera.wbt` TCP camera stream plus YOLO-to-`GateDetection`.
+
+The upstream ArduPilot `iris_camera.wbt` stream is grayscale. It is expanded to
+three channels for YOLO in simulation; true RGB behavior remains a future
+C920/OpenCV or RGB Webots adapter concern.
 
 ## Repository Layout
 
@@ -72,12 +81,13 @@ drone-autonomy --mode autonomy --connection udp:127.0.0.1:14550 --detector synth
 
 ## Development Stages
 
-1. Validate Webots plus ArduPilot SITL with manual MAVProxy control.
-2. Validate Python MAVLink telemetry input.
-3. Translate `VehicleCommand` outputs into MAVLink guided commands.
-4. Integrate YOLOv8n behind the `GateDetector` protocol.
-5. Tune gate centering, adaptive next-gate acquire, and landing behavior in simulation.
-6. Prepare hardware-facing companion deployment.
+1. Done: validate Webots plus ArduPilot SITL baseline assets.
+2. Done: validate Python MAVLink heartbeat/listen/autonomy wiring.
+3. Done: translate `VehicleCommand` outputs into MAVLink guided commands.
+4. Done: add Webots TCP camera plus YOLO-to-`GateDetection` pipeline.
+5. Next: provide/train the gate model and add the custom two-gate Webots world.
+6. Next: tune centering, adaptive acquire, final exit, and landing in simulation.
+7. Later: prepare hardware-facing companion deployment.
 
 ## Current Autonomy Scope
 
@@ -96,6 +106,7 @@ after the baseline works.
 
 Read these before running motion tests:
 
+- [docs/project-status.md](docs/project-status.md): implementation status and anti-hallucination ground truth.
 - [docs/run-simulation.md](docs/run-simulation.md): exact step-by-step runbook.
 - [docs/webots-yolo-pipeline.md](docs/webots-yolo-pipeline.md): Webots camera stream to YOLO to `GateDetection`.
 - [docs/main-logic-map.md](docs/main-logic-map.md): map of runtime, mission, MAVLink, and detector code.

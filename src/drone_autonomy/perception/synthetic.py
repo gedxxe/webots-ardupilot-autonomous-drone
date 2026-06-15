@@ -8,7 +8,7 @@ from drone_autonomy.perception.detections import BoundingBox, GateDetection
 
 @dataclass(frozen=True)
 class SyntheticGateConfig:
-    """Synthetic detections for SITL smoke tests without YOLO/Webots camera."""
+    """Synthetic detections for SITL smoke tests that bypass real perception."""
 
     frame_width_px: int = 1280
     frame_height_px: int = 720
@@ -20,8 +20,8 @@ class SyntheticGateProvider:
     """State-aware gate provider for simulator smoke tests only.
 
     This intentionally depends on mission phase because it is not a real
-    perception module. Use it to validate MAVLink/runtime wiring before the
-    Webots world and YOLO model exist.
+    perception module. Use it to validate MAVLink/runtime wiring without a
+    trained model, camera stream, or visible gate.
     """
 
     def __init__(self, config: SyntheticGateConfig | None = None) -> None:

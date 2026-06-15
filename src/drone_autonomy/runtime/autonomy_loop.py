@@ -137,7 +137,7 @@ class AutonomyRuntime:
                 detection = None
                 if synthetic_gate is not None:
                     # Synthetic perception is phase-aware and exists only to test
-                    # mission/MAVLink wiring before YOLO and Webots camera exist.
+                    # mission/MAVLink wiring while bypassing real camera/model I/O.
                     detection = synthetic_gate.detect_for_phase(
                         loop_started_s,
                         mission.phase,
