@@ -96,6 +96,8 @@ FAILSAFE
 
 Important:
 
+- `TAKEOFF` uses a low `0.35 m` navigation-takeoff bootstrap, then bounded
+  body-z velocity toward `1.0 m`.
 - `NEXT_GATE_ACQUIRE` is not blind sprint.
 - `BRAKE` after gate 2 detection reduces overshoot before centering.
 - `FINAL_EXIT` measures forward distance, not altitude.

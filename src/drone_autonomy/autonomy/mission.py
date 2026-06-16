@@ -35,18 +35,22 @@ class GateMissionConfig:
     Distances are local forward distances along the course, not altitude. The
     final exit distance is measured from the moment the last gate is considered
     passed, so `2.0 m` means "fly forward 2 meters after the last gate".
+
+    Takeoff defaults intentionally use a low navigation-takeoff bootstrap and a
+    slow bounded velocity climb. The bootstrap only exits ArduPilot's landed
+    state; it is not the main altitude controller for the 1 m task.
     """
 
     gate_count: int = 2
     guided_mode_name: str = "GUIDED"
     takeoff_altitude_m: float = 1.0
-    takeoff_bootstrap_altitude_m: float = 0.75
-    takeoff_bootstrap_complete_altitude_m: float = 0.20
-    takeoff_settle_tolerance_m: float = 0.07
+    takeoff_bootstrap_altitude_m: float = 0.35
+    takeoff_bootstrap_complete_altitude_m: float = 0.12
+    takeoff_settle_tolerance_m: float = 0.06
     takeoff_required_stable_ticks: int = 8
-    takeoff_vertical_kp: float = 0.70
-    takeoff_max_climb_m_s: float = 0.35
-    takeoff_max_descent_m_s: float = 0.35
+    takeoff_vertical_kp: float = 0.45
+    takeoff_max_climb_m_s: float = 0.25
+    takeoff_max_descent_m_s: float = 0.30
     takeoff_timeout_s: float = 20.0
     max_detection_age_s: float = 0.35
     required_detection_ticks: int = 2
@@ -90,6 +94,14 @@ class GateMissionConfig:
         if self.takeoff_bootstrap_complete_altitude_m > self.takeoff_altitude_m:
             raise ValueError(
                 "takeoff_bootstrap_complete_altitude_m must be <= takeoff_altitude_m"
+            )
+        if (
+            self.takeoff_bootstrap_complete_altitude_m
+            > self.takeoff_bootstrap_altitude_m
+        ):
+            raise ValueError(
+                "takeoff_bootstrap_complete_altitude_m must be <= "
+                "takeoff_bootstrap_altitude_m"
             )
         if self.takeoff_settle_tolerance_m < 0.0:
             raise ValueError("takeoff_settle_tolerance_m must be non-negative")
@@ -252,7 +264,7 @@ class GateAutonomyMission:
             )
 
         in_settle_band = abs(altitude_error_m) <= self.config.takeoff_settle_tolerance_m
-        if in_settle_band:
+        if in_settle_band and not telemetry.landed:
             self._takeoff_stable_ticks += 1
         else:
             self._takeoff_stable_ticks = 0
@@ -287,7 +299,16 @@ class GateAutonomyMission:
         vertical velocity shaping.
         """
 
-        return telemetry.altitude_m < self.config.takeoff_bootstrap_complete_altitude_m
+        near_takeoff_target = (
+            telemetry.altitude_m
+            >= self.config.takeoff_altitude_m - self.config.takeoff_settle_tolerance_m
+        )
+        if near_takeoff_target:
+            return False
+        return (
+            telemetry.landed
+            or telemetry.altitude_m < self.config.takeoff_bootstrap_complete_altitude_m
+        )
 
     def _controlled_takeoff_velocity(self, altitude_error_m: float) -> VehicleCommand:
         """Return a bounded vertical velocity for low-altitude takeoff.

@@ -74,6 +74,15 @@ near target          -> zero vertical command and settle counter
 stable enough        -> enter SEEK_GATE
 ```
 
+Current conservative defaults:
+
+- Target altitude: `1.0 m`.
+- Navigation-takeoff bootstrap target: `0.35 m`.
+- Switch from bootstrap to body-z velocity when altitude is at least `0.12 m` and ArduPilot no longer reports `landed`.
+- Controlled climb cap: `0.25 m/s`.
+- Controlled descent cap: `0.30 m/s`.
+- Settle band: `+/-0.06 m` for `8` consecutive non-landed ticks.
+
 This is intentionally not a full PID in the companion process. ArduPilot owns
 the attitude, motor, and vertical inner loops; the mission only shapes safe
 setpoints.

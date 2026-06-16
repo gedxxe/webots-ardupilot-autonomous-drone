@@ -250,6 +250,16 @@ sent phase=land ... cmd=land
 
 The exact timing depends on SITL position updates and vehicle response.
 
+Takeoff is intentionally split into a low bootstrap and a slow controlled
+climb:
+
+- First `cmd=takeoff` targets only `0.35 m` so ArduPilot/Webots exits landed
+  state.
+- After the vehicle is no longer reported as landed and altitude is at least
+  `0.12 m`, the mission switches to bounded body-z velocity.
+- The body-z climb cap is `0.25 m/s` toward the `1.0 m` target, with `+/-0.06 m`
+  settle tolerance for `8` non-landed ticks.
+
 ## Step 6: Script-Based Run
 
 Create runtime config:

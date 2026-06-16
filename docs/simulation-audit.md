@@ -32,8 +32,9 @@ Before `--send-commands`:
 ## Ready in Code
 
 - Mission state machine for two gates.
-- Hybrid 1 m takeoff profile using a short navigation-takeoff bootstrap followed
-  by bounded body-frame vertical velocity.
+- Hybrid 1 m takeoff profile using a `0.35 m` navigation-takeoff bootstrap
+  followed by bounded body-frame vertical velocity (`0.25 m/s` climb cap,
+  `0.30 m/s` descent cap, `+/-0.06 m` non-landed settle band).
 - Adaptive next-gate acquire instead of blind sprint.
 - Brake-before-center after the next gate is detected during adaptive acquire.
 - Altitude-hold velocity bias from fused `LOCAL_POSITION_NED` altitude.
@@ -85,9 +86,9 @@ treated as a competition-grade world.
 - `LOCAL_POSITION_NED.z` behaves as expected with Webots.
 - Webots can resolve external Cyberbotics `EXTERNPROTO` dependencies used by the
   upstream example worlds, such as `StraightRoadSegment`.
-- ArduPilot accepts the low-altitude takeoff bootstrap, then body-frame velocity
-  commands in GUIDED mode, including negative body-z velocity during controlled
-  climb.
+- ArduPilot accepts the `0.35 m` low-altitude takeoff bootstrap, then
+  body-frame velocity commands in GUIDED mode after it is no longer landed,
+  including negative body-z velocity during controlled climb.
 - Gate pass distance and final forward exit distance are realistic for the world scale.
 - `webots-yolo` detections only occur for the intended gate class.
 - Synthetic detector should not be used for judging gate behavior.

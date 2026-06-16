@@ -35,9 +35,12 @@ In MAVProxy:
 ```text
 mode guided
 arm throttle
-takeoff 10
+takeoff 1
 mode land
 ```
+
+This is only a plain SITL sanity check. The autonomy mission uses its own
+conservative profile: `0.35 m` bootstrap, then bounded velocity toward `1.0 m`.
 
 ## Webots SITL Check
 
