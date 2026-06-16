@@ -77,6 +77,26 @@ def test_mission_requests_guided_then_arm_then_takeoff() -> None:
 
     output = mission.update(telemetry(2.0, altitude_m=0.0, mode="GUIDED", armed=True))
     assert output.phase == MissionPhase.TAKEOFF
+    assert output.command.kind == CommandKind.TAKEOFF
+    assert output.command.altitude_m == mission.config.takeoff_bootstrap_altitude_m
+
+
+def test_takeoff_switches_from_bootstrap_to_controlled_velocity() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_bootstrap_altitude_m=0.6,
+            takeoff_bootstrap_complete_altitude_m=0.2,
+            takeoff_required_stable_ticks=2,
+        )
+    )
+
+    output = mission.update(telemetry(0.0, altitude_m=0.0, landed=True))
+    assert output.phase == MissionPhase.TAKEOFF
+    assert output.command.kind == CommandKind.TAKEOFF
+    assert output.command.altitude_m == 0.6
+
+    output = mission.update(telemetry(1.0, altitude_m=0.25, landed=False))
+    assert output.phase == MissionPhase.TAKEOFF
     assert output.command.kind == CommandKind.BODY_VELOCITY
     assert output.command.body_vz_m_s < 0.0
 
@@ -84,6 +104,7 @@ def test_mission_requests_guided_then_arm_then_takeoff() -> None:
 def test_controlled_takeoff_slows_and_settles_before_seek() -> None:
     mission = GateAutonomyMission(
         GateMissionConfig(
+            takeoff_bootstrap_complete_altitude_m=0.10,
             takeoff_required_stable_ticks=2,
             takeoff_settle_tolerance_m=0.05,
             takeoff_max_climb_m_s=0.35,
@@ -106,6 +127,7 @@ def test_controlled_takeoff_slows_and_settles_before_seek() -> None:
 def test_controlled_takeoff_recovers_from_overshoot_before_seek() -> None:
     mission = GateAutonomyMission(
         GateMissionConfig(
+            takeoff_bootstrap_complete_altitude_m=0.10,
             takeoff_required_stable_ticks=1,
             takeoff_settle_tolerance_m=0.05,
             takeoff_max_descent_m_s=0.35,

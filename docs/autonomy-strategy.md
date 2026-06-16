@@ -61,11 +61,14 @@ If gate 2 is detected for the required number of ticks, the mission brakes brief
 
 ## Altitude Control
 
-Takeoff uses a bounded vertical velocity profile instead of relying on a single
-aggressive `MAV_CMD_NAV_TAKEOFF` for the 1 m task. The profile is proportional
+Takeoff uses a hybrid bootstrap plus bounded vertical velocity profile. A short
+`MAV_CMD_NAV_TAKEOFF` bootstrap gets ArduPilot/Webots out of the landed state,
+because guided body-z velocity can be ignored while still on the ground. After a
+small altitude threshold, the mission switches to proportional velocity shaping
 with saturation, a settle band, and required stable ticks:
 
 ```text
+on ground / very low -> low-altitude NAV_TAKEOFF bootstrap
 large altitude error -> capped climb/descent velocity
 near target          -> zero vertical command and settle counter
 stable enough        -> enter SEEK_GATE

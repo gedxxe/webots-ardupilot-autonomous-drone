@@ -107,7 +107,8 @@ Check:
 - Mode actually changed to `GUIDED`.
 - ArduPilot accepted arm command.
 - MAVProxy console does not show prearm failures.
-- Runtime prints `sent phase=takeoff ... cmd=body_velocity`.
+- Runtime first prints `sent phase=takeoff ... cmd=takeoff`.
+- After altitude starts rising, runtime prints `sent phase=takeoff ... cmd=body_velocity`.
 - Body-frame z velocity sign is correct: negative `body_vz_m_s` means climb.
 - ArduPilot accepts guided body-velocity commands while armed.
 

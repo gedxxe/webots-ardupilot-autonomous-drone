@@ -235,6 +235,7 @@ Expected phase progression:
 ```text
 sent phase=init ... cmd=set_mode
 sent phase=init ... cmd=arm
+sent phase=takeoff ... cmd=takeoff
 sent phase=takeoff ... cmd=body_velocity
 sent phase=seek_gate ... cmd=body_velocity
 sent phase=center_gate ... cmd=body_velocity

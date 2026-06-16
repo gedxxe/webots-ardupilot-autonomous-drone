@@ -15,8 +15,9 @@ continuing.
 - Mission state machine for the two-gate task:
   `takeoff -> seek -> center -> pass -> adaptive acquire -> brake -> center ->
   pass -> forward exit 2 m -> land`.
-- Controlled low-altitude takeoff profile using bounded body-frame vertical
-  velocity, settle tolerance, and required stable ticks.
+- Hybrid low-altitude takeoff profile: short navigation-takeoff bootstrap to
+  get airborne, then bounded body-frame vertical velocity, settle tolerance, and
+  required stable ticks.
 - Body-frame `VehicleCommand` contract:
   forward/right/down velocity plus yaw-rate.
 - Altitude-hold velocity bias from fused `LOCAL_POSITION_NED` altitude.
