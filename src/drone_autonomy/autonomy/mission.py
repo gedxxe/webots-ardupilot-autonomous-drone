@@ -5,7 +5,6 @@ from enum import Enum
 
 from drone_autonomy.autonomy.commands import CommandKind, VehicleCommand
 from drone_autonomy.control.altitude import AltitudeHoldConfig, AltitudeHoldController
-from drone_autonomy.control.filters import clamp
 from drone_autonomy.control.visual_servo import (
     GateVisualServoController,
     ServoOutput,
@@ -36,21 +35,17 @@ class GateMissionConfig:
     final exit distance is measured from the moment the last gate is considered
     passed, so `2.0 m` means "fly forward 2 meters after the last gate".
 
-    Takeoff defaults intentionally use a low navigation-takeoff bootstrap and a
-    slow bounded velocity climb. The bootstrap only exits ArduPilot's landed
-    state; it is not the main altitude controller for the 1 m task.
+    Takeoff is deliberately ArduPilot-managed: the mission sends a
+    `MAV_CMD_NAV_TAKEOFF` target and waits for fused telemetry to settle. Do not
+    add a companion-side body-z takeoff controller unless SITL logs prove the
+    ArduPilot takeoff command cannot hold the requested altitude.
     """
 
     gate_count: int = 2
     guided_mode_name: str = "GUIDED"
     takeoff_altitude_m: float = 1.0
-    takeoff_bootstrap_altitude_m: float = 0.35
-    takeoff_bootstrap_complete_altitude_m: float = 0.12
     takeoff_settle_tolerance_m: float = 0.06
     takeoff_required_stable_ticks: int = 8
-    takeoff_vertical_kp: float = 0.45
-    takeoff_max_climb_m_s: float = 0.25
-    takeoff_max_descent_m_s: float = 0.30
     takeoff_timeout_s: float = 20.0
     max_detection_age_s: float = 0.35
     required_detection_ticks: int = 2
@@ -81,38 +76,12 @@ class GateMissionConfig:
             raise ValueError("required_detection_ticks must be at least 1")
         if self.required_aligned_ticks < 1:
             raise ValueError("required_aligned_ticks must be at least 1")
-        if self.takeoff_bootstrap_altitude_m <= 0.0:
-            raise ValueError("takeoff_bootstrap_altitude_m must be positive")
-        if self.takeoff_bootstrap_altitude_m > self.takeoff_altitude_m:
-            raise ValueError(
-                "takeoff_bootstrap_altitude_m must be <= takeoff_altitude_m"
-            )
-        if self.takeoff_bootstrap_complete_altitude_m < 0.0:
-            raise ValueError(
-                "takeoff_bootstrap_complete_altitude_m must be non-negative"
-            )
-        if self.takeoff_bootstrap_complete_altitude_m > self.takeoff_altitude_m:
-            raise ValueError(
-                "takeoff_bootstrap_complete_altitude_m must be <= takeoff_altitude_m"
-            )
-        if (
-            self.takeoff_bootstrap_complete_altitude_m
-            > self.takeoff_bootstrap_altitude_m
-        ):
-            raise ValueError(
-                "takeoff_bootstrap_complete_altitude_m must be <= "
-                "takeoff_bootstrap_altitude_m"
-            )
+        if self.takeoff_altitude_m <= 0.0:
+            raise ValueError("takeoff_altitude_m must be positive")
         if self.takeoff_settle_tolerance_m < 0.0:
             raise ValueError("takeoff_settle_tolerance_m must be non-negative")
         if self.takeoff_required_stable_ticks < 1:
             raise ValueError("takeoff_required_stable_ticks must be at least 1")
-        if self.takeoff_vertical_kp < 0.0:
-            raise ValueError("takeoff_vertical_kp must be non-negative")
-        if self.takeoff_max_climb_m_s < 0.0:
-            raise ValueError("takeoff_max_climb_m_s must be non-negative")
-        if self.takeoff_max_descent_m_s < 0.0:
-            raise ValueError("takeoff_max_descent_m_s must be non-negative")
         if self.final_exit_distance_m < 0.0:
             raise ValueError("final_exit_distance_m must be non-negative")
         if self.next_gate_acquire_max_distance_m < 0.0:
@@ -253,16 +222,6 @@ class GateAutonomyMission:
 
     def _run_takeoff(self, telemetry: MissionTelemetry) -> MissionOutput:
         altitude_error_m = self.config.takeoff_altitude_m - telemetry.altitude_m
-        if self._takeoff_needs_bootstrap(telemetry):
-            self._takeoff_stable_ticks = 0
-            return self._output(
-                VehicleCommand.takeoff(
-                    self.config.takeoff_bootstrap_altitude_m,
-                    "bootstrap airborne state before velocity takeoff",
-                ),
-                "takeoff bootstrap",
-            )
-
         in_settle_band = abs(altitude_error_m) <= self.config.takeoff_settle_tolerance_m
         if in_settle_band and not telemetry.landed:
             self._takeoff_stable_ticks += 1
@@ -278,57 +237,15 @@ class GateAutonomyMission:
             return self.update(telemetry)
 
         return self._output(
-            (
-                VehicleCommand.body_velocity(reason="controlled takeoff settle")
-                if in_settle_band
-                else self._controlled_takeoff_velocity(altitude_error_m)
+            VehicleCommand.takeoff(
+                self.config.takeoff_altitude_m,
+                "ArduPilot-managed takeoff to mission altitude",
             ),
             (
-                "controlled takeoff "
+                "waiting for ArduPilot takeoff "
                 f"stable={self._takeoff_stable_ticks}/"
                 f"{self.config.takeoff_required_stable_ticks}"
             ),
-        )
-
-    def _takeoff_needs_bootstrap(self, telemetry: MissionTelemetry) -> bool:
-        """Return True until ArduPilot should accept guided velocity setpoints.
-
-        ArduPilot/Webots may ignore body-frame velocity while the vehicle is
-        still on the ground. A short navigation-takeoff bootstrap gets the
-        vehicle airborne, then the mission immediately switches back to bounded
-        vertical velocity shaping.
-        """
-
-        near_takeoff_target = (
-            telemetry.altitude_m
-            >= self.config.takeoff_altitude_m - self.config.takeoff_settle_tolerance_m
-        )
-        if near_takeoff_target:
-            return False
-        return (
-            telemetry.landed
-            or telemetry.altitude_m < self.config.takeoff_bootstrap_complete_altitude_m
-        )
-
-    def _controlled_takeoff_velocity(self, altitude_error_m: float) -> VehicleCommand:
-        """Return a bounded vertical velocity for low-altitude takeoff.
-
-        ArduPilot remains responsible for attitude, motor, and vertical inner
-        loops. The mission only shapes the requested body-frame z velocity so a
-        1 m task does not rely on an aggressive one-shot takeoff command.
-        """
-
-        # Positive altitude error means the vehicle is below target and must
-        # climb. Body-frame z velocity is positive down, so the sign is negated.
-        body_vz_m_s = -self.config.takeoff_vertical_kp * altitude_error_m
-        body_vz_m_s = clamp(
-            body_vz_m_s,
-            -self.config.takeoff_max_climb_m_s,
-            self.config.takeoff_max_descent_m_s,
-        )
-        return VehicleCommand.body_velocity(
-            body_vz_m_s=body_vz_m_s,
-            reason="controlled takeoff vertical profile",
         )
 
     def _run_seek_gate(self, telemetry: MissionTelemetry) -> MissionOutput:

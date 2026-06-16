@@ -1,7 +1,7 @@
 # Project Status and Agent Ground Truth
 
-Last audited status: 2026-06-16, after adding the Webots TCP camera plus YOLO
-perception path.
+Last audited status: 2026-06-16, after reverting TAKEOFF to an
+ArduPilot-managed `MAV_CMD_NAV_TAKEOFF` target.
 
 This document is the short source of truth for AI agents and maintainers. If a
 claim conflicts with this file, verify the code and update this file before
@@ -15,10 +15,9 @@ continuing.
 - Mission state machine for the two-gate task:
   `takeoff -> seek -> center -> pass -> adaptive acquire -> brake -> center ->
   pass -> forward exit 2 m -> land`.
-- Hybrid low-altitude takeoff profile: `0.35 m` navigation-takeoff bootstrap to
-  get airborne, then bounded body-frame vertical velocity toward `1.0 m`
-  (`0.25 m/s` climb cap, `0.30 m/s` descent cap, `+/-0.06 m` settle band, and
-  `8` non-landed stable ticks).
+- ArduPilot-managed takeoff profile: mission sends `MAV_CMD_NAV_TAKEOFF` to
+  `1.0 m` and waits for `+/-0.06 m` telemetry settle over `8` non-landed ticks
+  before seeking gates. No companion-side body-z takeoff controller is active.
 - Body-frame `VehicleCommand` contract:
   forward/right/down velocity plus yaw-rate.
 - Altitude-hold velocity bias from fused `LOCAL_POSITION_NED` altitude.
@@ -74,6 +73,8 @@ continuing.
 - MAVLink command sending happens only in the runtime/adapter layer.
 - Sensor fusion belongs to ArduPilot EKF or an explicit adapter. Mission code
   consumes fused telemetry, not raw GPS/rangefinder/optical-flow samples.
+- Do not reintroduce split takeoff bootstrap plus companion body-z velocity
+  without a new SITL log-based reason; that approach overshot in testing.
 - RGB-only gate detection is image alignment, not reliable metric distance,
   unless camera intrinsics and gate dimensions are explicitly calibrated.
 

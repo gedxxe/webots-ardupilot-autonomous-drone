@@ -8,6 +8,10 @@ Use ArduPilot EKF as the primary sensor-fusion owner. The companion app should c
 
 Do not raw-blend GPS, rangefinder, and optical-flow data in the Python mission layer unless there is a separately designed estimator with validation tests.
 
+For TAKEOFF specifically, prefer ArduPilot's guided takeoff controller over a
+companion-side vertical velocity loop. The mission should send the `1.0 m`
+takeoff target, then wait for fused telemetry to settle.
+
 ## Why
 
 - ArduPilot already owns attitude, altitude, local position, failsafe, and guided-mode control loops.
@@ -15,6 +19,18 @@ Do not raw-blend GPS, rangefinder, and optical-flow data in the Python mission l
 - Rangefinder is strong for low-altitude height above ground but can fail over bad surfaces or outside range.
 - Optical flow is useful for local motion when texture and range data are good.
 - RGB gate detection gives alignment, not reliable metric distance without calibration.
+
+The MicoAir MTF-01 is a two-in-one optical-flow plus short-range lidar sensor.
+When configured correctly in ArduPilot, the rangefinder/flow data should improve
+the autopilot's own altitude and local-position control. The companion should
+verify that telemetry/logs expose valid range/flow data, but it should not fuse
+those raw samples inside `GateAutonomyMission`.
+
+Reference docs:
+
+- ArduPilot rangefinder overview: `https://ardupilot.org/copter/docs/common-rangefinder-landingpage.html`
+- ArduPilot MicoAir MTF-01 setup: `https://ardupilot.org/copter/docs/common-mtf-01.html`
+- ArduPilot Guided mode: `https://ardupilot.org/copter/docs/ac2_guidedmode.html`
 
 ## Companion-App Contract
 

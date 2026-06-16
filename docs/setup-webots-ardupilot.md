@@ -39,8 +39,9 @@ takeoff 1
 mode land
 ```
 
-This is only a plain SITL sanity check. The autonomy mission uses its own
-conservative profile: `0.35 m` bootstrap, then bounded velocity toward `1.0 m`.
+This is only a plain SITL sanity check. The autonomy mission now uses the same
+high-level approach: send `MAV_CMD_NAV_TAKEOFF` to `1.0 m`, then wait for
+telemetry to settle before starting the gate mission.
 
 ## Webots SITL Check
 

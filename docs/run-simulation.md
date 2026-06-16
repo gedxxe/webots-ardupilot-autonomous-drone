@@ -236,7 +236,6 @@ Expected phase progression:
 sent phase=init ... cmd=set_mode
 sent phase=init ... cmd=arm
 sent phase=takeoff ... cmd=takeoff
-sent phase=takeoff ... cmd=body_velocity
 sent phase=seek_gate ... cmd=body_velocity
 sent phase=center_gate ... cmd=body_velocity
 sent phase=pass_gate ... cmd=body_velocity
@@ -250,15 +249,12 @@ sent phase=land ... cmd=land
 
 The exact timing depends on SITL position updates and vehicle response.
 
-Takeoff is intentionally split into a low bootstrap and a slow controlled
-climb:
+Takeoff is intentionally delegated to ArduPilot:
 
-- First `cmd=takeoff` targets only `0.35 m` so ArduPilot/Webots exits landed
-  state.
-- After the vehicle is no longer reported as landed and altitude is at least
-  `0.12 m`, the mission switches to bounded body-z velocity.
-- The body-z climb cap is `0.25 m/s` toward the `1.0 m` target, with `+/-0.06 m`
-  settle tolerance for `8` non-landed ticks.
+- `cmd=takeoff` targets the mission altitude, `1.0 m`.
+- The mission does not send body-z velocity during TAKEOFF.
+- It waits for `+/-0.06 m` settle tolerance over `8` non-landed ticks before
+  entering `seek_gate`.
 
 ## Step 6: Script-Based Run
 

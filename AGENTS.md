@@ -66,6 +66,9 @@ Current detector modes:
 
 The first implementation uses image-based visual servoing:
 
+- Takeoff is ArduPilot-managed: send `MAV_CMD_NAV_TAKEOFF` to `1.0 m`, then
+  wait for fused telemetry to settle. Do not reintroduce the removed `0.35 m`
+  bootstrap plus companion body-z velocity loop; it overshot in SITL.
 - Horizontal image error drives right/left body velocity and yaw rate.
 - Vertical image error drives climb/descent through body z velocity.
 - Forward speed is reduced when centering error is large.
@@ -82,6 +85,9 @@ The first implementation uses image-based visual servoing:
 - If telemetry is required but not wired yet, model it explicitly as input.
 - If camera calibration is unknown, avoid pretending to know metric distance from RGB alone.
 - If sensor fusion is required, document whether it is ArduPilot EKF fusion or a local estimator before adding code.
+- If TAKEOFF behavior is discussed, state that current code delegates takeoff
+  altitude control to ArduPilot and does not run a companion-side vertical
+  velocity takeoff controller.
 - If a custom two-gate Webots world is absent, do not invent world file names.
 - If Webots assets look incomplete, re-sync from ArduPilot
   `libraries/SITL/examples/Webots_Python` instead of patching paths ad hoc.

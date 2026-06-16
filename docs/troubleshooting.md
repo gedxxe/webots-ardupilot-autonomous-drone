@@ -108,27 +108,28 @@ Check:
 - ArduPilot accepted arm command.
 - MAVProxy console does not show prearm failures.
 - Runtime first prints `sent phase=takeoff ... cmd=takeoff`.
-- After altitude starts rising, runtime prints `sent phase=takeoff ... cmd=body_velocity`.
-- Body-frame z velocity sign is correct: negative `body_vz_m_s` means climb.
-- ArduPilot accepts guided body-velocity commands while armed.
+- TAKEOFF remains on `cmd=takeoff` until fused altitude is stable near `1.0 m`.
+- ArduPilot accepts the guided takeoff command while armed.
 
 The expected takeoff profile is:
 
 ```text
-cmd=takeoff      -> bootstrap target 0.35 m
-cmd=body_velocity -> controlled climb to 1.0 m, max climb 0.25 m/s
+cmd=takeoff -> ArduPilot-managed target 1.0 m
 ```
 
-If it stays on the ground and only prints repeated `cmd=takeoff`, check MAVProxy
-for prearm, mode, EKF, or command rejection messages before changing the mission
-tuning.
+The mission intentionally does not send body-z velocity during TAKEOFF. If it
+stays on the ground and only prints repeated `cmd=takeoff`, check MAVProxy for
+prearm, mode, EKF, or command rejection messages before changing mission logic.
 
 Current code does not yet parse `COMMAND_ACK`, so MAVProxy output is the best immediate clue.
 
 ## Vehicle overshoots the 1 m takeoff target
 
-Do not increase the bootstrap target to fix overshoot. The bootstrap is only
-meant to leave the landed state. First log the runtime phase and altitude:
+The previous hybrid takeoff idea, `0.35 m` bootstrap plus companion body-z
+velocity, overshot in SITL and has been removed. TAKEOFF now delegates altitude
+control to ArduPilot through `MAV_CMD_NAV_TAKEOFF`.
+
+First log the runtime phase and altitude:
 
 ```bash
 drone-autonomy --mode listen --connection udp:127.0.0.1:14550 --count 80
@@ -137,14 +138,12 @@ drone-autonomy --mode listen --connection udp:127.0.0.1:14550 --count 80
 Then watch whether the transition is:
 
 ```text
-takeoff/cmd=takeoff -> takeoff/cmd=body_velocity -> seek_gate
+takeoff/cmd=takeoff -> seek_gate
 ```
 
-Current defaults are deliberately conservative: `0.35 m` bootstrap, `0.25 m/s`
-climb cap, `0.30 m/s` descent cap, and `+/-0.06 m` settle band for non-landed
-ticks. If SITL still overshoots badly, reduce `takeoff_max_climb_m_s` or
-`takeoff_vertical_kp` in a test config after confirming that
-`LOCAL_POSITION_NED.z` has the expected sign.
+If SITL still overshoots badly, do not tune removed companion gains. Check
+ArduPilot altitude parameters, vehicle mass/thrust model, Webots physics, and
+whether `LOCAL_POSITION_NED.z` has the expected sign.
 
 ## Vehicle moves the wrong direction
 

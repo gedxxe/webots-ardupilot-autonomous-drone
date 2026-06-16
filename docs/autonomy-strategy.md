@@ -61,31 +61,26 @@ If gate 2 is detected for the required number of ticks, the mission brakes brief
 
 ## Altitude Control
 
-Takeoff uses a hybrid bootstrap plus bounded vertical velocity profile. A short
-`MAV_CMD_NAV_TAKEOFF` bootstrap gets ArduPilot/Webots out of the landed state,
-because guided body-z velocity can be ignored while still on the ground. After a
-small altitude threshold, the mission switches to proportional velocity shaping
-with saturation, a settle band, and required stable ticks:
+Takeoff uses ArduPilot's own guided takeoff controller. The mission sends
+`MAV_CMD_NAV_TAKEOFF` directly to the configured `1.0 m` target and waits for
+fused telemetry to settle before entering gate search. It does not mix a short
+bootstrap target with companion-side body-z velocity, because that hybrid
+profile overshot in SITL.
 
 ```text
-on ground / very low -> low-altitude NAV_TAKEOFF bootstrap
-large altitude error -> capped climb/descent velocity
-near target          -> zero vertical command and settle counter
-stable enough        -> enter SEEK_GATE
+GUIDED + armed -> MAV_CMD_NAV_TAKEOFF target 1.0 m
+not settled    -> keep waiting in TAKEOFF
+stable enough  -> enter SEEK_GATE
 ```
 
-Current conservative defaults:
+Current takeoff defaults:
 
 - Target altitude: `1.0 m`.
-- Navigation-takeoff bootstrap target: `0.35 m`.
-- Switch from bootstrap to body-z velocity when altitude is at least `0.12 m` and ArduPilot no longer reports `landed`.
-- Controlled climb cap: `0.25 m/s`.
-- Controlled descent cap: `0.30 m/s`.
 - Settle band: `+/-0.06 m` for `8` consecutive non-landed ticks.
 
-This is intentionally not a full PID in the companion process. ArduPilot owns
-the attitude, motor, and vertical inner loops; the mission only shapes safe
-setpoints.
+This is intentionally not a PID or velocity controller in the companion
+process. ArduPilot owns the attitude, motor, altitude, and takeoff inner loops;
+the mission only gates phase progression based on telemetry.
 
 The mission maintains altitude during search, pass, adaptive acquire, brake, and final forward exit by adding a small vertical velocity correction toward the takeoff altitude. During visual centering, vertical image correction is allowed but bounded by altitude guards.
 

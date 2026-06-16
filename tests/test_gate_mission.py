@@ -66,16 +66,12 @@ def telemetry(
     )
 
 
-def test_default_takeoff_tuning_is_conservative() -> None:
+def test_default_takeoff_policy_is_ardupilot_managed() -> None:
     config = GateMissionConfig()
 
     assert config.takeoff_altitude_m == 1.0
-    assert config.takeoff_bootstrap_altitude_m == 0.35
-    assert config.takeoff_bootstrap_complete_altitude_m == 0.12
     assert config.takeoff_settle_tolerance_m == 0.06
-    assert config.takeoff_vertical_kp == 0.45
-    assert config.takeoff_max_climb_m_s == 0.25
-    assert config.takeoff_max_descent_m_s == 0.30
+    assert config.takeoff_required_stable_ticks == 8
 
 
 def test_mission_requests_guided_then_arm_then_takeoff() -> None:
@@ -90,42 +86,7 @@ def test_mission_requests_guided_then_arm_then_takeoff() -> None:
     output = mission.update(telemetry(2.0, altitude_m=0.0, mode="GUIDED", armed=True))
     assert output.phase == MissionPhase.TAKEOFF
     assert output.command.kind == CommandKind.TAKEOFF
-    assert output.command.altitude_m == mission.config.takeoff_bootstrap_altitude_m
-
-
-def test_takeoff_switches_from_bootstrap_to_controlled_velocity() -> None:
-    mission = GateAutonomyMission(
-        GateMissionConfig(
-            takeoff_bootstrap_altitude_m=0.6,
-            takeoff_bootstrap_complete_altitude_m=0.2,
-            takeoff_required_stable_ticks=2,
-        )
-    )
-
-    output = mission.update(telemetry(0.0, altitude_m=0.0, landed=True))
-    assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.TAKEOFF
-    assert output.command.altitude_m == 0.6
-
-    output = mission.update(telemetry(1.0, altitude_m=0.25, landed=False))
-    assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.BODY_VELOCITY
-    assert output.command.body_vz_m_s < 0.0
-
-
-def test_takeoff_keeps_bootstrap_while_ardupilot_reports_landed() -> None:
-    mission = GateAutonomyMission(
-        GateMissionConfig(
-            takeoff_bootstrap_altitude_m=0.35,
-            takeoff_bootstrap_complete_altitude_m=0.12,
-        )
-    )
-
-    output = mission.update(telemetry(0.0, altitude_m=0.20, landed=True))
-
-    assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.TAKEOFF
-    assert output.command.altitude_m == 0.35
+    assert output.command.altitude_m == mission.config.takeoff_altitude_m
 
 
 def test_takeoff_does_not_seek_while_landed_even_if_altitude_is_near_target() -> None:
@@ -139,47 +100,44 @@ def test_takeoff_does_not_seek_while_landed_even_if_altitude_is_near_target() ->
     output = mission.update(telemetry(0.0, altitude_m=1.0, landed=True))
 
     assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.BODY_VELOCITY
+    assert output.command.kind == CommandKind.TAKEOFF
+    assert output.command.altitude_m == 1.0
 
 
-def test_controlled_takeoff_slows_and_settles_before_seek() -> None:
+def test_takeoff_waits_for_stable_ardupilot_altitude_before_seek() -> None:
     mission = GateAutonomyMission(
         GateMissionConfig(
-            takeoff_bootstrap_complete_altitude_m=0.10,
             takeoff_required_stable_ticks=2,
             takeoff_settle_tolerance_m=0.05,
-            takeoff_max_climb_m_s=0.25,
         )
     )
 
-    output = mission.update(telemetry(0.0, altitude_m=0.20))
+    output = mission.update(telemetry(0.0, altitude_m=0.20, landed=False))
     assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.BODY_VELOCITY
-    assert output.command.body_vz_m_s == -0.25
+    assert output.command.kind == CommandKind.TAKEOFF
+    assert output.command.altitude_m == 1.0
 
     output = mission.update(telemetry(1.0, altitude_m=0.96))
     assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.body_vz_m_s == 0.0
+    assert output.command.kind == CommandKind.TAKEOFF
 
     output = mission.update(telemetry(1.1, altitude_m=1.01))
     assert output.phase == MissionPhase.SEEK_GATE
 
 
-def test_controlled_takeoff_recovers_from_overshoot_before_seek() -> None:
+def test_takeoff_overshoot_does_not_emit_companion_vertical_correction() -> None:
     mission = GateAutonomyMission(
         GateMissionConfig(
-            takeoff_bootstrap_complete_altitude_m=0.10,
             takeoff_required_stable_ticks=1,
             takeoff_settle_tolerance_m=0.05,
-            takeoff_max_descent_m_s=0.30,
         )
     )
 
     output = mission.update(telemetry(0.0, altitude_m=3.0))
 
     assert output.phase == MissionPhase.TAKEOFF
-    assert output.command.kind == CommandKind.BODY_VELOCITY
-    assert output.command.body_vz_m_s == 0.30
+    assert output.command.kind == CommandKind.TAKEOFF
+    assert output.command.altitude_m == 1.0
 
 
 def test_nominal_two_gate_sequence_reaches_landing() -> None:
