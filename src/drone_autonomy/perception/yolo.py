@@ -12,16 +12,17 @@ class YoloGateConfig:
     """YOLO gate detector settings.
 
     Keep class filtering explicit. If `gate_class_names` and `gate_class_ids`
-    are both empty, every detected class is accepted. For real-world use, prefer
-    a trained model with a `gate` class and leave the default filter enabled.
+    are both empty, every detected class is accepted. The repository's bundled
+    YOLOv8n gate model uses class id 0 with class name `Goals-Detection`, so the
+    default filter accepts class id 0.
     """
 
     model_path: str
     confidence: float = 0.35
     image_size_px: int = 640
-    device: str = ""
-    gate_class_names: tuple[str, ...] = ("gate",)
-    gate_class_ids: tuple[int, ...] = ()
+    device: str = "cpu"
+    gate_class_names: tuple[str, ...] = ()
+    gate_class_ids: tuple[int, ...] = (0,)
 
     def __post_init__(self) -> None:
         if not self.model_path:

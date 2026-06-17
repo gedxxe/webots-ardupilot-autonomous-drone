@@ -16,5 +16,6 @@
 *.png binary
 *.jpg binary
 *.jpeg binary
+*.pt binary
 *.dae binary
 *.stl binary

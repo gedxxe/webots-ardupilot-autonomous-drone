@@ -7,7 +7,7 @@ The autonomy code expects a gate detector, not a specific neural-network runtime
 The detector may consume:
 
 - Logitech C920 Pro RGB frames on real hardware.
-- Webots RGB camera frames in simulation.
+- Webots `iris_camera.wbt` TCP camera frames in simulation.
 - Recorded frames for tests or tuning.
 
 Current implemented simulation path:
@@ -32,10 +32,14 @@ Each processed frame should return either `None` or one `GateDetection`.
 GateDetection(
     bbox=BoundingBox(x_min=..., y_min=..., x_max=..., y_max=...),
     confidence=0.0_to_1.0,
-    class_name="gate",
+    class_name="Goals-Detection",
     observed_at_s=timestamp,
 )
 ```
+
+The current bundled model is `models/gate_yolov8n_best.pt` and should be
+accepted by class id `0`. A future model may use the class name `gate`; class id
+or class name filtering should be explicit for whichever model is active.
 
 ## Bounding Box Semantics
 

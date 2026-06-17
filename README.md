@@ -19,6 +19,7 @@ Current simulation perception options are:
 
 - `synthetic`: fake centered detections for wiring tests.
 - `webots-yolo`: `iris_camera.wbt` TCP camera stream plus YOLO-to-`GateDetection`.
+  The repo includes the trained gate model at `models/gate_yolov8n_best.pt`.
 
 The upstream ArduPilot `iris_camera.wbt` stream is grayscale. It is expanded to
 three channels for YOLO in simulation; true RGB behavior remains a future
@@ -31,6 +32,7 @@ C920/OpenCV or RGB Webots adapter concern.
 +-- AGENTS.md                # Notes for future AI agents and maintainers
 +-- configs/                 # Environment and simulator configuration
 +-- docs/                    # Setup notes, strategy, and contracts
++-- models/                  # Trained local perception model artifacts
 +-- scripts/                 # Launch and smoke-test scripts
 +-- src/drone_autonomy/      # Python companion/autonomy package
 +-- tests/                   # Unit tests for local autonomy code
@@ -79,14 +81,20 @@ Send commands only when connected to SITL:
 drone-autonomy --mode autonomy --connection udp:127.0.0.1:14550 --detector synthetic --send-commands
 ```
 
+Run the iris-camera YOLO profile in dry-run mode:
+
+```bash
+bash scripts/run_iris_camera_yolo.sh
+```
+
 ## Development Stages
 
 1. Done: validate Webots plus ArduPilot SITL baseline assets.
 2. Done: validate Python MAVLink heartbeat/listen/autonomy wiring.
 3. Done: translate `VehicleCommand` outputs into MAVLink guided commands.
 4. Done: add Webots TCP camera plus YOLO-to-`GateDetection` pipeline.
-5. Next: provide/train the gate model and add the custom two-gate Webots world.
-6. Next: tune centering, adaptive acquire, final exit, and landing in simulation.
+5. Done: add the trained YOLOv8n gate model for `iris_camera.wbt` tests.
+6. Next: validate/tune centering, adaptive acquire, final exit, and landing in simulation.
 7. Later: prepare hardware-facing companion deployment.
 
 ## Current Autonomy Scope

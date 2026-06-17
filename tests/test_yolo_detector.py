@@ -34,6 +34,14 @@ class FakeModel:
         return [FakeResult()]
 
 
+def test_yolo_config_defaults_match_bundled_gate_model() -> None:
+    config = YoloGateConfig(model_path="models/gate_yolov8n_best.pt")
+
+    assert config.device == "cpu"
+    assert config.gate_class_names == ()
+    assert config.gate_class_ids == (0,)
+
+
 def test_yolo_detector_returns_gate_detection_only() -> None:
     model = FakeModel()
     detector = YoloGateDetector(

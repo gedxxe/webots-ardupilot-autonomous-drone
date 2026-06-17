@@ -152,6 +152,8 @@ src/drone_autonomy/perception/synthetic.py
 ```
 
 Synthetic detector is only for wiring tests. It returns centered gate boxes based on mission phase.
+It must keep a fake detection continuous across `SEEK_GATE -> CENTER_GATE`; if
+it keys detections by phase, the mission will oscillate between seek and center.
 
 Implemented Webots plus YOLO detector path:
 
@@ -162,6 +164,14 @@ webots/worlds/iris_camera.wbt
 -> src/drone_autonomy/perception/yolo.py
 -> GateDetection
 -> MissionTelemetry.gate_detection
+```
+
+Current profile launcher:
+
+```text
+scripts/run_iris_camera_yolo.sh
+-> models/gate_yolov8n_best.pt
+-> YOLO class id 0
 ```
 
 The current upstream Webots stream is `gray8`, expanded to three channels for

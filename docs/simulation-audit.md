@@ -43,14 +43,16 @@ Before `--send-commands`:
 - Synthetic gate detector for SITL wiring tests that bypass real perception.
 - Webots TCP camera adapter for `iris_camera.wbt`.
 - YOLO gate detector wrapper that converts model boxes to `GateDetection`.
+- Trained YOLOv8n gate model at `models/gate_yolov8n_best.pt`.
+- Iris camera YOLO launcher profile at `scripts/run_iris_camera_yolo.sh`.
 
 ## Still Required Outside Code
 
-- Real or trained YOLOv8n gate model file.
 - `pip install -e ".[vision]"` before using `--detector webots-yolo`.
 - ArduPilot SITL running and publishing MAVLink on the configured UDP endpoint.
 - Correct Webots course alignment relative to `LOCAL_POSITION_NED`.
-- Trained/provided YOLO gate model that recognizes the experimental goal asset.
+- SITL validation that the trained model recognizes the experimental goal asset
+  from the actual `iris_camera.wbt` camera viewpoint.
 
 ## Available Baseline Webots Assets
 
@@ -64,9 +66,9 @@ Before `--send-commands`:
   `RobotstadiumGoal` instances for early perception/world iteration.
 
 The baseline Webots tree is complete for ArduPilot's upstream examples. The
-current `RobotstadiumGoal` additions are experimental and still need model
-training, detector validation, and course-direction verification before they are
-treated as a competition-grade world.
+current `RobotstadiumGoal` additions are experimental and still need detector
+validation from the Iris camera viewpoint plus course-direction verification
+before they are treated as a competition-grade world.
 
 ## Not Yet Implemented in Code
 
@@ -88,7 +90,8 @@ treated as a competition-grade world.
 - ArduPilot accepts `MAV_CMD_NAV_TAKEOFF` to `1.0 m` in GUIDED mode and settles
   without companion-side body-z velocity during TAKEOFF.
 - Gate pass distance and final forward exit distance are realistic for the world scale.
-- `webots-yolo` detections only occur for the intended gate class.
+- `webots-yolo` detections only occur for model class id `0`
+  (`Goals-Detection`) and not unrelated objects.
 - Synthetic detector should not be used for judging gate behavior.
 
 ## Known Design Choices

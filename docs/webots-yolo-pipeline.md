@@ -25,6 +25,10 @@ plus Logitech C920 adapter.
 --camera-port 5599
 ```
 
+The `Camera` device in the Iris `extensionSlot` must also be named `camera`.
+The Webots controller looks it up with `robot.getDevice("camera")`; if a custom
+world omits that exact device name, the TCP camera stream will not start.
+
 The upstream ArduPilot Webots controller streams frames over TCP:
 
 ```text
@@ -33,11 +37,36 @@ port: 5599
 format: uint16 width, uint16 height, then gray8 pixels
 ```
 
+The client preserves partial frame bytes across normal socket timeouts. Webots
+streams at camera FPS, while the autonomy loop may poll faster; a timeout before
+the next frame is not treated as a broken camera stream.
+
 Important: this upstream stream is grayscale. The adapter expands it to three
 identical channels before YOLO inference. This is acceptable for simulation
 wiring and shape-based gate tests, but it is not a true RGB camera validation.
 A future C920/OpenCV source should provide real RGB frames without changing the
 YOLO detector or mission state machine.
+
+## Current Gate Model
+
+The trained simulation model is stored in the repo:
+
+```text
+models/gate_yolov8n_best.pt
+```
+
+Model metadata observed during audit:
+
+```text
+class id 0 -> Goals-Detection
+```
+
+Use class id filtering for this model:
+
+```text
+YOLO_GATE_CLASS_NAMES=""
+YOLO_GATE_CLASS_IDS="0"
+```
 
 ## Install Vision Dependencies
 
@@ -85,12 +114,13 @@ Edit `configs/autonomy_runtime.env`:
 
 ```text
 DETECTOR="webots-yolo"
-YOLO_MODEL_PATH="/media/gedxxe/DATA/models/gate_yolov8n.pt"
+YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best.pt"
 YOLO_CONFIDENCE="0.35"
 YOLO_IMGSZ="640"
-YOLO_GATE_CLASS_NAMES="gate"
-YOLO_GATE_CLASS_IDS=""
-YOLO_DEVICE=""
+YOLO_GATE_CLASS_NAMES=""
+YOLO_GATE_CLASS_IDS="0"
+YOLO_DEVICE="cpu"
+YOLO_CONFIG_DIR="${REPO_ROOT}/.tmp_ultralytics"
 
 WEBOTS_CAMERA_HOST="127.0.0.1"
 WEBOTS_CAMERA_PORT="5599"
@@ -104,11 +134,24 @@ run perception and mission decisions without moving the vehicle.
 
 ## Dry-Run
 
-Terminal C:
+Fast profile command:
 
 ```bash
 cd /media/gedxxe/DATA/WeBots_Ardupilot
 source .venv/bin/activate
+bash scripts/run_iris_camera_yolo.sh
+```
+
+Equivalent explicit command:
+
+```bash
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+source .venv/bin/activate
+DETECTOR=webots-yolo \
+YOLO_MODEL_PATH="${PWD}/models/gate_yolov8n_best.pt" \
+YOLO_GATE_CLASS_NAMES="" \
+YOLO_GATE_CLASS_IDS="0" \
+SEND_COMMANDS=0 \
 scripts/run_autonomy_sitl.sh
 ```
 
@@ -116,26 +159,31 @@ Expected startup lines include:
 
 ```text
 autonomy connection=udp:127.0.0.1:14550 detector=webots-yolo command_mode=dry-run loop_hz=20.0
-webots-yolo camera=tcp://127.0.0.1:5599 encoding=gray8 model=/media/gedxxe/DATA/models/gate_yolov8n.pt
+webots-yolo camera=tcp://127.0.0.1:5599 encoding=gray8 model=.../models/gate_yolov8n_best.pt
 ```
 
-If no trained gate model or no gate is visible, the mission should remain in
-`seek_gate` and continue scanning. That is safe behavior.
+If the model path is wrong, the gate is not visible, or the class filter is
+wrong, the mission should remain in `seek_gate` and continue scanning. That is
+safe behavior.
 
 ## Detector Class Filtering
 
-Default:
-
-```text
-YOLO_GATE_CLASS_NAMES="gate"
-```
-
-This means only detections whose YOLO class name is `gate` become
-`GateDetection`. If your model uses class id `0` but a different class name, use:
+For the bundled model:
 
 ```text
 YOLO_GATE_CLASS_NAMES=""
 YOLO_GATE_CLASS_IDS="0"
+```
+
+This means only detections whose YOLO class id is `0` become `GateDetection`.
+This is required because the current model class name is `Goals-Detection`, not
+`gate`.
+
+If a future model uses a literal class name `gate`, use:
+
+```text
+YOLO_GATE_CLASS_NAMES="gate"
+YOLO_GATE_CLASS_IDS=""
 ```
 
 Do not accept every class during motion tests. If class filtering is empty and

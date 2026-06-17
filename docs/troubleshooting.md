@@ -18,8 +18,9 @@ python -m drone_autonomy.cli --mode heartbeat
 ```
 
 If the error came from `scripts/run_autonomy_sitl.sh`, update to the latest repo
-version first. The script now falls back to running `python -m
-drone_autonomy.cli` from `src/` when `drone-autonomy` is not in `PATH`.
+version first. The script now prefers running `python -m drone_autonomy.cli`
+from this repo's `src/` tree before using any `drone-autonomy` executable from
+`PATH`.
 
 If you want to reuse the ArduPilot virtualenv on the DATA partition:
 
@@ -172,6 +173,25 @@ That is expected. Synthetic detector is not perception. It returns centered boxe
 
 Use `--detector webots-yolo` with a trained gate model before evaluating gate behavior.
 
+## Synthetic detector alternates between `seek_gate` and `center_gate`
+
+This should not happen after the synthetic provider fix. The synthetic detector
+keeps its fake detection active across `SEEK_GATE -> CENTER_GATE`; it should not
+reset only because the mission started centering.
+
+If oscillation returns, check that the script is running this repo's current
+source and not a stale `drone-autonomy` executable:
+
+```bash
+SEND_COMMANDS=1 DETECTOR=synthetic scripts/run_autonomy_sitl.sh
+```
+
+The launcher should use `python -m drone_autonomy.cli` from this repo's `src/`
+tree. Inline values such as `SEND_COMMANDS=1` override
+`configs/autonomy_runtime.env`, so use the inline command above for a one-shot
+motion test even when your local env file keeps the safe default
+`SEND_COMMANDS="0"`.
+
 ## Vehicle overshoots gate 2 in synthetic test
 
 Synthetic detection has no real depth or camera timing. The real mitigation is:
@@ -189,10 +209,13 @@ Set the model path in `configs/autonomy_runtime.env`:
 
 ```text
 DETECTOR="webots-yolo"
-YOLO_MODEL_PATH="/media/gedxxe/DATA/models/gate_yolov8n.pt"
+YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best.pt"
+YOLO_GATE_CLASS_NAMES=""
+YOLO_GATE_CLASS_IDS="0"
 ```
 
-The repo does not include a trained gate model.
+The profile script `scripts/run_iris_camera_yolo.sh` sets these values by
+default.
 
 ## `Ultralytics YOLO is required`
 
@@ -207,28 +230,44 @@ pip install -e ".[dev,vision]"
 If you use `venv-ardupilot`, activate that environment first and run the same
 install command from this repo.
 
+## Ultralytics cannot write its settings directory
+
+If Ultralytics fails while creating a user settings directory, point it at a
+writable local path before running the autonomy profile:
+
+```bash
+export YOLO_CONFIG_DIR="$PWD/.tmp_ultralytics"
+bash scripts/run_iris_camera_yolo.sh
+```
+
+The `.tmp_ultralytics/` folder is ignored by git.
+
 ## `webots-yolo` stays in `seeking gate`
 
 Check these in order:
 
 1. Webots opened `webots/worlds/iris_camera.wbt`, not `iris.wbt`.
-2. Webots console printed `Camera stream started at 127.0.0.1:5599`.
-3. `WEBOTS_CAMERA_PORT="5599"` in `configs/autonomy_runtime.env`.
-4. `YOLO_MODEL_PATH` points to a real `.pt` model.
-5. The model class filter matches your training labels.
+2. The Iris `extensionSlot` contains `Camera { name "camera" ... }`.
+3. The Iris `controllerArgs` contain `--camera camera` and
+   `--camera-port 5599`.
+4. Webots console printed `Camera stream started at 127.0.0.1:5599`.
+5. `WEBOTS_CAMERA_PORT="5599"` in `configs/autonomy_runtime.env`.
+6. `YOLO_MODEL_PATH` points to a real `.pt` model.
+7. The model class filter matches your training labels.
 
-Default class filter:
-
-```text
-YOLO_GATE_CLASS_NAMES="gate"
-YOLO_GATE_CLASS_IDS=""
-```
-
-If your gate class is id `0` but not named `gate`, use:
+Bundled model class filter:
 
 ```text
 YOLO_GATE_CLASS_NAMES=""
 YOLO_GATE_CLASS_IDS="0"
+```
+
+The bundled `models/gate_yolov8n_best.pt` model reports class id `0` with class
+name `Goals-Detection`. If a future model uses a literal class name `gate`, use:
+
+```text
+YOLO_GATE_CLASS_NAMES="gate"
+YOLO_GATE_CLASS_IDS=""
 ```
 
 Do not clear both filters during motion tests unless the model detects only
@@ -242,6 +281,29 @@ webots-yolo waiting for camera frame tcp://127.0.0.1:5599
 
 the camera TCP stream is not connected yet. Fix Webots world/port first before
 tuning YOLO.
+
+If the same camera stream works in the official ArduPilot example but not in a
+copied or custom map, compare the `Iris` node first. A camera stream requires
+both the controller args and a camera device with the exact same name. Opening
+`iris.wbt` or copying only the vehicle without the camera `extensionSlot` gives
+normal SITL physics but no camera TCP stream.
+
+## Webots repeats `Connected to camera client` then `Camera client disconnected`
+
+This means the autonomy process reached the Webots TCP camera server, but the
+client did not keep the stream open long enough to assemble a full frame.
+
+The current camera client keeps partial frame bytes across normal socket
+timeouts. Make sure you are running the latest repo source through
+`scripts/run_autonomy_sitl.sh`, not an old installed `drone-autonomy` command.
+The launcher should prefer:
+
+```text
+python -m drone_autonomy.cli
+```
+
+Expected healthy Webots behavior is one camera client connection that stays
+open while autonomy runs. A disconnect at process shutdown is normal.
 
 ## YOLO detections look worse than expected in Webots
 

@@ -62,6 +62,13 @@ Current detector modes:
   perception plumbing, but upstream `iris_camera.wbt` streams grayscale frames,
   not true RGB.
 
+Current trained simulation model:
+
+- Path: `models/gate_yolov8n_best.pt`.
+- YOLO class id accepted by the repo profile: `0`.
+- Observed class name: `Goals-Detection`.
+- Preferred world for current simulation work: `webots/worlds/iris_camera.wbt`.
+
 ## Current Strategy
 
 The first implementation uses image-based visual servoing:
@@ -88,11 +95,27 @@ The first implementation uses image-based visual servoing:
 - If TAKEOFF behavior is discussed, state that current code delegates takeoff
   altitude control to ArduPilot and does not run a companion-side vertical
   velocity takeoff controller.
+- If synthetic detector oscillates between `seek_gate` and `center_gate`, check
+  detector state continuity across phase changes before changing mission logic.
+- `scripts/run_autonomy_sitl.sh` should prefer this repo's `src/` module launch
+  over a `drone-autonomy` executable from `PATH`; stale console scripts can hide
+  current code. Inline env values, for example `SEND_COMMANDS=1`, should
+  override local config files.
 - If a custom two-gate Webots world is absent, do not invent world file names.
 - If Webots assets look incomplete, re-sync from ArduPilot
   `libraries/SITL/examples/Webots_Python` instead of patching paths ad hoc.
+- For `iris_camera.wbt`, keep `Camera { name "camera" ... }` aligned with the
+  Iris `controllerArgs` value `--camera camera`; otherwise the Webots controller
+  cannot start the TCP camera stream on port `5599`.
+- Repeated Webots `Connected to camera client` / `Camera client disconnected`
+  messages point at TCP camera client buffering/timeout behavior before YOLO
+  model quality. The client should preserve partial frames across normal
+  timeouts.
 - If `webots-yolo` is discussed, state that it requires an external model file
-  and that the current upstream camera stream is grayscale.
+  unless `models/gate_yolov8n_best.pt` is present, and that the current upstream
+  camera stream is grayscale.
+- For the bundled gate model, do not assume the class name is `gate`; use class
+  id `0` unless the model metadata is rechecked.
 - If Webots world/proto files are modified in the working tree, verify whether
   they are intentional user design changes before staging. Do not mix accidental
   Webots GUI churn with autonomy/code documentation commits.

@@ -7,6 +7,8 @@ __pycache__/
 *.egg-info/
 .coverage
 htmlcov/
+Ultralytics/
+.tmp_ultralytics/
 
 # Virtual environments
 .venv/

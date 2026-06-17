@@ -26,7 +26,7 @@ class SyntheticGateProvider:
 
     def __init__(self, config: SyntheticGateConfig | None = None) -> None:
         self.config = config or SyntheticGateConfig()
-        self._active_key: tuple[MissionPhase, int] | None = None
+        self._active_gate_index: int | None = None
         self._active_since_s = 0.0
 
     def detect_for_phase(
@@ -41,12 +41,14 @@ class SyntheticGateProvider:
             MissionPhase.BRAKE,
             MissionPhase.CENTER_GATE,
         }:
-            self._active_key = None
+            self._active_gate_index = None
             return None
 
-        key = (phase, gate_index)
-        if key != self._active_key:
-            self._active_key = key
+        # Keep the fake detection continuous across SEEK_GATE -> CENTER_GATE.
+        # Keying on phase would make the detector disappear at the exact moment
+        # the mission starts centering, causing a seek/center oscillation.
+        if gate_index != self._active_gate_index:
+            self._active_gate_index = gate_index
             self._active_since_s = now_s
             return None
 

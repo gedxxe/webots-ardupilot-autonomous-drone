@@ -22,6 +22,7 @@ class WebotsCameraConfig:
     encoding: str = "gray8"
     connect_timeout_s: float = 1.0
     read_timeout_s: float = 0.05
+    max_frame_bytes: int = 10_000_000
 
     def __post_init__(self) -> None:
         if self.port <= 0 or self.port > 65535:
@@ -32,6 +33,8 @@ class WebotsCameraConfig:
             raise ValueError("connect_timeout_s must be positive")
         if self.read_timeout_s <= 0.0:
             raise ValueError("read_timeout_s must be positive")
+        if self.max_frame_bytes <= 0:
+            raise ValueError("max_frame_bytes must be positive")
 
 
 def decode_webots_camera_payload(
@@ -106,6 +109,7 @@ class WebotsTcpCameraClient:
     def __init__(self, config: WebotsCameraConfig | None = None) -> None:
         self.config = config or WebotsCameraConfig()
         self._socket: socket.socket | None = None
+        self._buffer = bytearray()
 
     def read_latest(self, observed_at_s: float) -> CameraFrame | None:
         """Return one frame or `None` when the stream is unavailable.
@@ -118,18 +122,27 @@ class WebotsTcpCameraClient:
         if sock is None:
             return None
 
-        header = self._read_exact(sock, self._HEADER_SIZE)
-        if header is None:
-            self.close()
+        # A normal timeout only means Webots has not emitted enough bytes for
+        # the next frame yet. Keep the socket and partial buffer so the Webots
+        # server does not see a connect/disconnect loop between camera ticks.
+        if not self._fill_buffer(sock, self._HEADER_SIZE):
             return None
 
+        header = bytes(self._buffer[: self._HEADER_SIZE])
         width_px, height_px = struct.unpack(self._HEADER_FORMAT, header)
         channels = 1 if self.config.encoding == "gray8" else 3
         payload_len = width_px * height_px * channels
-        payload = self._read_exact(sock, payload_len)
-        if payload is None:
+        frame_len = self._HEADER_SIZE + payload_len
+
+        if payload_len <= 0 or payload_len > self.config.max_frame_bytes:
             self.close()
             return None
+
+        if not self._fill_buffer(sock, frame_len):
+            return None
+
+        payload = bytes(self._buffer[self._HEADER_SIZE : frame_len])
+        del self._buffer[:frame_len]
 
         try:
             return decode_webots_camera_payload(
@@ -147,6 +160,7 @@ class WebotsTcpCameraClient:
     def close(self) -> None:
         """Close the TCP connection if it is open."""
 
+        self._buffer.clear()
         if self._socket is None:
             return
         try:
@@ -170,16 +184,25 @@ class WebotsTcpCameraClient:
         self._socket = sock
         return sock
 
-    def _read_exact(self, sock: socket.socket, byte_count: int) -> bytes | None:
-        chunks: list[bytes] = []
-        remaining = byte_count
-        while remaining > 0:
+    def _fill_buffer(self, sock: socket.socket, byte_count: int) -> bool:
+        """Read until at least `byte_count` buffered bytes exist.
+
+        Socket timeouts are not treated as fatal. The Webots controller sends at
+        camera FPS, while the autonomy loop may poll faster than that. Closing
+        on every timeout makes Webots print repeated camera client disconnects
+        and prevents a full frame from accumulating.
+        """
+
+        while len(self._buffer) < byte_count:
             try:
-                data = sock.recv(remaining)
-            except (BlockingIOError, TimeoutError, socket.timeout, OSError):
-                return None
+                data = sock.recv(byte_count - len(self._buffer))
+            except (BlockingIOError, TimeoutError, socket.timeout):
+                return False
+            except OSError:
+                self.close()
+                return False
             if not data:
-                return None
-            chunks.append(data)
-            remaining -= len(data)
-        return b"".join(chunks)
+                self.close()
+                return False
+            self._buffer.extend(data)
+        return True

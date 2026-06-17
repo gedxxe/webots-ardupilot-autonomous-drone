@@ -48,11 +48,13 @@ telemetry to settle before starting the gate mission.
 This repository vendors a full copy of ArduPilot's `Webots_Python` example under
 `webots/`. Use this local copy for baseline tests and future custom worlds.
 
-Open Webots first and load:
+For the current gate-perception simulation, open Webots first and load:
 
 ```text
-<repo>/webots/worlds/iris.wbt
+<repo>/webots/worlds/iris_camera.wbt
 ```
+
+Use `<repo>/webots/worlds/iris.wbt` only for camera-free baseline checks.
 
 Then run from this repository:
 

@@ -122,17 +122,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--yolo-device",
-        default="",
-        help="Optional YOLO device string such as cpu, cuda, or cuda:0.",
+        default="cpu",
+        help="YOLO device string such as cpu, cuda, or cuda:0.",
     )
     parser.add_argument(
         "--gate-class-names",
-        default="gate",
-        help="Comma-separated YOLO class names accepted as gates. Empty accepts all.",
+        default="",
+        help="Comma-separated YOLO class names accepted as gates.",
     )
     parser.add_argument(
         "--gate-class-ids",
-        default="",
+        default="0",
         help="Comma-separated YOLO class ids accepted as gates.",
     )
     return parser

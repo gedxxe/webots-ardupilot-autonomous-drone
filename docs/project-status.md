@@ -1,7 +1,7 @@
 # Project Status and Agent Ground Truth
 
-Last audited status: 2026-06-16, after reverting TAKEOFF to an
-ArduPilot-managed `MAV_CMD_NAV_TAKEOFF` target.
+Last audited status: 2026-06-17, after adding the trained YOLOv8n gate model and
+iris_camera YOLO simulation profile.
 
 This document is the short source of truth for AI agents and maintainers. If a
 claim conflicts with this file, verify the code and update this file before
@@ -32,16 +32,24 @@ continuing.
 - Detector modes:
   `none`, `synthetic`, and `webots-yolo`.
 - Synthetic detector for mission/MAVLink wiring only.
+- Synthetic detector keeps fake detections continuous across
+  `SEEK_GATE -> CENTER_GATE` to avoid phase oscillation during wiring tests.
 - Webots TCP camera frame source for upstream `iris_camera.wbt` port `5599`.
+- `iris_camera.wbt` camera device is explicitly named `camera` to match the
+  ArduPilot Webots controller argument `--camera camera`.
+- Webots TCP camera client preserves partial frames across normal socket
+  timeouts, so polling faster than the camera FPS does not reconnect on every
+  camera tick.
 - YOLO-to-`GateDetection` adapter with confidence and class filtering.
 - `webots-yolo` runtime glue that keeps camera/model details outside the
   mission state machine.
+- Trained YOLOv8n gate model at `models/gate_yolov8n_best.pt`.
+- Iris camera YOLO launcher profile at `scripts/run_iris_camera_yolo.sh`.
 - Experimental `RobotstadiumGoal` Webots PROTO and two goal instances in
   `webots/worlds/iris_camera.wbt`.
 
 ## Not Implemented Yet
 
-- A trained/provided gate YOLO model file.
 - A validated competition-grade two-gate Webots course. The current goal objects
   are experimental geometry for perception/world iteration.
 - True RGB Webots stream. Upstream `iris_camera.wbt` currently streams
@@ -60,8 +68,13 @@ continuing.
   detector behavior, and body-frame signs are verified.
 - `webots-yolo` must use class filtering during motion tests. Do not accept every
   class unless the model detects only gates.
+- The bundled model's accepted class id is `0`; observed class name is
+  `Goals-Detection`. Prefer `YOLO_GATE_CLASS_IDS="0"` for this model.
 - Local `configs/*.env` files are ignored and can become stale. When behavior
   conflicts with docs, compare them against the matching `.env.example`.
+- `scripts/run_autonomy_sitl.sh` launches this repo's Python module from `src/`
+  before falling back to any `drone-autonomy` executable in `PATH`, and inline
+  environment variables override local `configs/autonomy_runtime.env` values.
 - Real-hardware behavior is future work unless a dedicated hardware adapter and
   safety procedure are added.
 

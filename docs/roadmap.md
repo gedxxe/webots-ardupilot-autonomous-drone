@@ -32,7 +32,9 @@
 - Done: synthetic detector for wiring tests.
 - Done: Webots `iris_camera.wbt` TCP camera adapter.
 - Done: YOLO-to-`GateDetection` adapter.
-- Pending: trained/provided gate model file.
+- Done: trained YOLOv8n gate model at `models/gate_yolov8n_best.pt`.
+- Pending: validate the trained model against the actual `iris_camera.wbt`
+  viewpoint and lighting.
 - Pending: custom two-gate Webots world and gate assets.
 - Pending: true RGB Webots stream or real camera source.
 

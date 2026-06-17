@@ -108,8 +108,9 @@ Webots TCP camera frame
 -> MissionTelemetry.gate_detection
 ```
 
-Detector-specific code stays in `src/drone_autonomy/perception/`. Model files
-stay outside source control unless the user explicitly wants them versioned.
+Detector-specific code stays in `src/drone_autonomy/perception/`. The current
+simulation model is versioned at `models/gate_yolov8n_best.pt` and loaded only
+by runtime detector profiles, not by the mission state machine.
 
 Current caveat: upstream `iris_camera.wbt` streams grayscale frames. The adapter
 expands those frames to three channels for YOLO, so this is a valid simulation

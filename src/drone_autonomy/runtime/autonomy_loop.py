@@ -55,9 +55,9 @@ class AutonomyRuntimeConfig:
     yolo_model_path: str = ""
     yolo_confidence: float = 0.35
     yolo_image_size_px: int = 640
-    yolo_device: str = ""
-    yolo_gate_class_names: tuple[str, ...] = ("gate",)
-    yolo_gate_class_ids: tuple[int, ...] = ()
+    yolo_device: str = "cpu"
+    yolo_gate_class_names: tuple[str, ...] = ()
+    yolo_gate_class_ids: tuple[int, ...] = (0,)
 
 
 @dataclass(frozen=True)
