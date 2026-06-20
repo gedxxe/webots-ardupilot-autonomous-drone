@@ -20,22 +20,31 @@ def centered_gate(now_s: float) -> GateDetection:
     )
 
 
+def small_centered_gate(now_s: float) -> GateDetection:
+    return GateDetection(
+        bbox=BoundingBox(45, 45, 55, 55),
+        confidence=0.95,
+        observed_at_s=now_s,
+    )
+
+
 def build_mission() -> GateAutonomyMission:
     servo = GateVisualServoController(
         VisualServoConfig(
             frame_width_px=100,
             frame_height_px=100,
             filter_alpha=1.0,
-            target_area_ratio=0.10,
         )
     )
     return GateAutonomyMission(
         GateMissionConfig(
             takeoff_required_stable_ticks=1,
             required_detection_ticks=1,
-            required_aligned_ticks=1,
+            center_dwell_s=0.0,
+            center_clearance_required_s=0.0,
             gate_pass_distance_m=1.0,
             next_gate_acquire_speed_m_s=2.5,
+            next_gate_acquire_min_clear_distance_m=0.5,
             next_gate_acquire_max_distance_m=4.0,
             next_gate_acquire_timeout_s=4.0,
             brake_settle_s=1.0,
@@ -158,7 +167,7 @@ def test_nominal_two_gate_sequence_reaches_landing() -> None:
         telemetry(3.0, forward_position_m=2.0, gate_detection=centered_gate(3.0))
     )
     assert output.phase == MissionPhase.BRAKE
-    assert output.command.body_vx_m_s == 0.0
+    assert output.command.body_vx_m_s == 2.5
     assert output.gate_index == 1
 
     output = mission.update(
@@ -170,12 +179,32 @@ def test_nominal_two_gate_sequence_reaches_landing() -> None:
     assert output.phase == MissionPhase.FINAL_EXIT
 
     output = mission.update(telemetry(6.2, forward_position_m=5.3))
+    assert output.phase == MissionPhase.BRAKE
+    assert output.detail == "braking before landing"
+    assert output.command.body_vx_m_s == 1.5
+
+    output = mission.update(telemetry(7.3, forward_position_m=5.3))
     assert output.phase == MissionPhase.LAND
     assert output.command.kind == CommandKind.LAND
 
 
-def test_lost_detection_while_centering_returns_to_seek() -> None:
-    mission = build_mission()
+def test_lost_detection_while_centering_uses_grace_before_seek() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=1,
+            required_detection_ticks=1,
+            center_dwell_s=5.0,
+            center_clearance_required_s=0.5,
+            center_lost_detection_grace_ticks=2,
+        ),
+        GateVisualServoController(
+            VisualServoConfig(
+                frame_width_px=100,
+                frame_height_px=100,
+                filter_alpha=1.0,
+            )
+        ),
+    )
     mission.update(telemetry(0.0, altitude_m=1.0))
 
     output = mission.update(
@@ -191,6 +220,13 @@ def test_lost_detection_while_centering_returns_to_seek() -> None:
     assert output.phase == MissionPhase.CENTER_GATE
 
     output = mission.update(telemetry(1.2))
+    assert output.phase == MissionPhase.CENTER_GATE
+    assert output.detail == "holding gate 1 target loss"
+
+    output = mission.update(telemetry(1.3))
+    assert output.phase == MissionPhase.CENTER_GATE
+
+    output = mission.update(telemetry(1.4))
     assert output.phase == MissionPhase.SEEK_GATE
 
 
@@ -215,6 +251,97 @@ def test_centering_altitude_guard_blocks_downward_command_near_floor() -> None:
     assert output.command.body_vz_m_s == 0.0
 
 
+def test_centering_requires_dwell_before_committed_pass() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=1,
+            required_detection_ticks=1,
+            center_dwell_s=5.0,
+            center_clearance_required_s=0.5,
+        ),
+        GateVisualServoController(
+            VisualServoConfig(
+                frame_width_px=100,
+                frame_height_px=100,
+                filter_alpha=1.0,
+            )
+        ),
+    )
+
+    mission.update(telemetry(0.0, altitude_m=1.0))
+
+    output = mission.update(telemetry(1.0, gate_detection=centered_gate(1.0)))
+    assert output.phase == MissionPhase.CENTER_GATE
+    assert "dwell=0.0/5.0s" in output.detail
+
+    output = mission.update(telemetry(5.9, gate_detection=centered_gate(5.9)))
+    assert output.phase == MissionPhase.CENTER_GATE
+
+    output = mission.update(telemetry(6.0, gate_detection=centered_gate(6.0)))
+    assert output.phase == MissionPhase.PASS_GATE
+
+
+def test_centering_requires_clearance_margin_before_committed_pass() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=1,
+            required_detection_ticks=1,
+            center_dwell_s=1.0,
+            center_clearance_required_s=0.0,
+        ),
+        GateVisualServoController(
+            VisualServoConfig(
+                frame_width_px=100,
+                frame_height_px=100,
+                filter_alpha=1.0,
+                pass_clearance_left_error=0.05,
+                pass_clearance_right_error=0.05,
+                pass_clearance_up_error=0.05,
+                pass_clearance_down_error=0.05,
+            )
+        ),
+    )
+
+    mission.update(telemetry(0.0, altitude_m=1.0))
+
+    off_center = GateDetection(
+        bbox=BoundingBox(5, 25, 45, 75),
+        confidence=0.95,
+        observed_at_s=2.0,
+    )
+    output = mission.update(telemetry(2.0, gate_detection=off_center))
+
+    assert output.phase == MissionPhase.CENTER_GATE
+    assert output.servo is not None
+    assert output.servo.clearance_ready is False
+
+
+def test_centering_requires_ready_area_before_committed_pass() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=1,
+            required_detection_ticks=1,
+            center_dwell_s=0.0,
+            center_clearance_required_s=0.0,
+            gate_ready_area_ratio=0.060,
+        ),
+        GateVisualServoController(
+            VisualServoConfig(
+                frame_width_px=100,
+                frame_height_px=100,
+                filter_alpha=1.0,
+            )
+        ),
+    )
+
+    mission.update(telemetry(0.0, altitude_m=1.0))
+
+    output = mission.update(telemetry(1.0, gate_detection=small_centered_gate(1.0)))
+
+    assert output.phase == MissionPhase.CENTER_GATE
+    assert "area=0.010/0.060" in output.detail
+
+
 def test_final_exit_uses_forward_distance_not_altitude() -> None:
     mission = build_mission()
     mission.update(telemetry(0.0, altitude_m=1.0))
@@ -223,12 +350,15 @@ def test_final_exit_uses_forward_distance_not_altitude() -> None:
         telemetry(2.0, forward_position_m=1.2, gate_detection=centered_gate(2.0))
     )
     mission.update(
-        telemetry(3.1, forward_position_m=1.2, gate_detection=centered_gate(3.1))
+        telemetry(3.1, forward_position_m=1.8, gate_detection=centered_gate(3.1))
     )
-    output = mission.update(telemetry(4.2, forward_position_m=2.4))
+    mission.update(
+        telemetry(4.2, forward_position_m=1.8, gate_detection=centered_gate(4.2))
+    )
+    output = mission.update(telemetry(5.3, forward_position_m=3.0))
     assert output.phase == MissionPhase.FINAL_EXIT
 
-    output = mission.update(telemetry(5.2, altitude_m=3.0, forward_position_m=2.5))
+    output = mission.update(telemetry(6.3, altitude_m=3.0, forward_position_m=3.1))
 
     assert output.phase == MissionPhase.FINAL_EXIT
     assert output.command.kind == CommandKind.BODY_VELOCITY
@@ -243,6 +373,86 @@ def test_altitude_hold_climbs_when_forward_phase_is_below_target() -> None:
 
     assert output.phase == MissionPhase.NEXT_GATE_ACQUIRE
     assert output.command.kind == CommandKind.BODY_VELOCITY
+    assert output.command.body_vz_m_s < 0.0
+
+
+def test_brake_ramps_forward_speed_down_before_settle_transition() -> None:
+    mission = build_mission()
+    mission.update(telemetry(0.0, altitude_m=1.0))
+    mission.update(telemetry(1.0, gate_detection=centered_gate(1.0)))
+    mission.update(telemetry(2.0, forward_position_m=1.2))
+
+    output = mission.update(
+        telemetry(3.0, forward_position_m=2.0, gate_detection=centered_gate(3.0))
+    )
+    assert output.phase == MissionPhase.BRAKE
+    assert output.command.body_vx_m_s == 2.5
+
+    output = mission.update(telemetry(3.35, forward_position_m=2.2))
+    assert output.phase == MissionPhase.BRAKE
+    assert 1.2 < output.command.body_vx_m_s < 1.3
+
+    output = mission.update(telemetry(3.8, forward_position_m=2.3))
+    assert output.phase == MissionPhase.BRAKE
+    assert output.command.body_vx_m_s == 0.0
+
+
+def test_brake_disables_companion_altitude_hold_by_default() -> None:
+    mission = build_mission()
+    mission.update(telemetry(0.0, altitude_m=1.0))
+    mission.update(telemetry(1.0, gate_detection=centered_gate(1.0)))
+    mission.update(telemetry(2.0, forward_position_m=1.2))
+
+    output = mission.update(
+        telemetry(
+            3.0,
+            altitude_m=0.70,
+            forward_position_m=2.0,
+            gate_detection=centered_gate(3.0),
+        )
+    )
+
+    assert output.phase == MissionPhase.BRAKE
+    assert output.command.body_vz_m_s == 0.0
+
+
+def test_brake_altitude_hold_can_be_enabled_for_drift_cases() -> None:
+    mission = GateAutonomyMission(
+        GateMissionConfig(
+            takeoff_required_stable_ticks=1,
+            required_detection_ticks=1,
+            center_dwell_s=0.0,
+            center_clearance_required_s=0.0,
+            gate_pass_distance_m=1.0,
+            next_gate_acquire_speed_m_s=2.5,
+            next_gate_acquire_min_clear_distance_m=0.5,
+            next_gate_acquire_max_distance_m=4.0,
+            next_gate_acquire_timeout_s=4.0,
+            brake_settle_s=1.0,
+            brake_altitude_hold_enabled=True,
+        ),
+        GateVisualServoController(
+            VisualServoConfig(
+                frame_width_px=100,
+                frame_height_px=100,
+                filter_alpha=1.0,
+            )
+        ),
+    )
+    mission.update(telemetry(0.0, altitude_m=1.0))
+    mission.update(telemetry(1.0, gate_detection=centered_gate(1.0)))
+    mission.update(telemetry(2.0, forward_position_m=1.2))
+
+    output = mission.update(
+        telemetry(
+            3.0,
+            altitude_m=0.70,
+            forward_position_m=2.0,
+            gate_detection=centered_gate(3.0),
+        )
+    )
+
+    assert output.phase == MissionPhase.BRAKE
     assert output.command.body_vz_m_s < 0.0
 
 
@@ -269,12 +479,52 @@ def test_next_gate_acquire_uses_detection_instead_of_blind_distance() -> None:
         telemetry(2.0, forward_position_m=1.4, gate_detection=centered_gate(2.0))
     )
 
+    assert output.phase == MissionPhase.NEXT_GATE_ACQUIRE
+    assert output.detail == "clearing previous gate before acquiring gate 2"
+
+    output = mission.update(
+        telemetry(2.5, forward_position_m=2.0, gate_detection=centered_gate(2.5))
+    )
+
     assert output.phase == MissionPhase.BRAKE
     assert output.gate_index == 1
 
     output = mission.update(
-        telemetry(3.1, forward_position_m=1.4, gate_detection=centered_gate(3.1))
+        telemetry(3.6, forward_position_m=2.0, gate_detection=centered_gate(3.6))
     )
 
     assert output.phase == MissionPhase.PASS_GATE
     assert output.gate_index == 1
+
+
+def test_next_gate_acquire_waits_for_ready_area_before_braking() -> None:
+    mission = build_mission()
+    mission.update(telemetry(0.0, altitude_m=1.0))
+    mission.update(telemetry(1.0, gate_detection=centered_gate(1.0)))
+    mission.update(telemetry(2.0, forward_position_m=1.2))
+
+    output = mission.update(
+        telemetry(2.6, forward_position_m=2.0, gate_detection=small_centered_gate(2.6))
+    )
+
+    assert output.phase == MissionPhase.NEXT_GATE_ACQUIRE
+    assert output.command.body_vx_m_s == 2.5
+    assert output.detail == "acquiring gate 2"
+
+    mid_area_gate = GateDetection(
+        bbox=BoundingBox(40, 37, 60, 63),
+        confidence=0.95,
+        observed_at_s=3.0,
+    )
+    output = mission.update(
+        telemetry(3.0, forward_position_m=2.5, gate_detection=mid_area_gate)
+    )
+
+    assert output.phase == MissionPhase.NEXT_GATE_ACQUIRE
+    assert output.detail == "approaching gate 2 area=0.052/0.060"
+
+    output = mission.update(
+        telemetry(3.5, forward_position_m=3.0, gate_detection=centered_gate(3.5))
+    )
+
+    assert output.phase == MissionPhase.BRAKE

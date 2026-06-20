@@ -18,12 +18,13 @@ Webots
 Current simulation perception options are:
 
 - `synthetic`: fake centered detections for wiring tests.
-- `webots-yolo`: `iris_camera.wbt` TCP camera stream plus YOLO-to-`GateDetection`.
-  The repo includes the trained gate model at `models/gate_yolov8n_best.pt`.
+- `webots-yolo`: `iris_camera.wbt` TCP camera stream, YOLO raw candidates, and
+  `GateTargetSelector` validation/tracking before `GateDetection`. The repo
+  includes the trained gate model at `models/gate_yolov8n_best.pt`.
 
-The upstream ArduPilot `iris_camera.wbt` stream is grayscale. It is expanded to
-three channels for YOLO in simulation; true RGB behavior remains a future
-C920/OpenCV or RGB Webots adapter concern.
+This repo's `iris_camera.wbt` requests `rgb24` from the vendored Webots
+controller so simulation inference is closer to normal RGB video. If diagnostics
+show `rgb8_from_gray8`, the run is still using the old grayscale path.
 
 ## Repository Layout
 
@@ -66,26 +67,18 @@ scripts/run_sitl_webots.sh
 Check MAVLink telemetry from the companion app:
 
 ```bash
-drone-autonomy --connection udp:127.0.0.1:14550 --mode heartbeat
-```
-
-Run the autonomy wiring in dry-run mode with synthetic gate detections:
-
-```bash
-drone-autonomy --mode autonomy --connection udp:127.0.0.1:14550 --detector synthetic
-```
-
-Send commands only when connected to SITL:
-
-```bash
-drone-autonomy --mode autonomy --connection udp:127.0.0.1:14550 --detector synthetic --send-commands
+drone-autonomy --connection udp:127.0.0.1:14551 --mode heartbeat
 ```
 
 Run the iris-camera YOLO profile in dry-run mode:
 
 ```bash
-bash scripts/run_iris_camera_yolo.sh
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=0 bash scripts/run_iris_camera_yolo.sh
 ```
+
+Use `SEND_COMMANDS=1` only after Webots, SITL, class filtering, and the OpenCV
+diagnostics overlay show the correct gate target. Synthetic detection still
+exists for plumbing tests, but it is not the default workflow.
 
 ## Development Stages
 
@@ -94,7 +87,8 @@ bash scripts/run_iris_camera_yolo.sh
 3. Done: translate `VehicleCommand` outputs into MAVLink guided commands.
 4. Done: add Webots TCP camera plus YOLO-to-`GateDetection` pipeline.
 5. Done: add the trained YOLOv8n gate model for `iris_camera.wbt` tests.
-6. Next: validate/tune centering, adaptive acquire, final exit, and landing in simulation.
+6. In progress: validate/tune gate target selection, centering, adaptive
+   acquire, final exit, and landing in simulation.
 7. Later: prepare hardware-facing companion deployment.
 
 ## Current Autonomy Scope
@@ -102,11 +96,17 @@ bash scripts/run_iris_camera_yolo.sh
 The repository now contains simulator/hardware-neutral mission logic for a two-gate task:
 
 ```text
-takeoff -> seek gate 1 -> center -> pass -> adaptive acquire gate 2
-        -> center gate 2 -> pass -> forward exit 2 m -> land
+takeoff -> seek gate 1 -> center dwell + clearance -> pass
+        -> clear forward -> acquire gate 2 -> brake
+        -> center dwell + clearance -> pass -> forward exit 2 m -> brake -> land
 
 fallback: adaptive acquire gate 2 -> slow seek gate 2 if detection times out
 ```
+
+Gate pass tuning is exposed through `configs/autonomy_runtime.env`:
+`MISSION_CENTER_DWELL`, `VISUAL_PASS_CLEARANCE_*`,
+`MISSION_GATE_READY_AREA`, `MISSION_GATE_PASS_DISTANCE`, and
+`MISSION_NEXT_GATE_CLEAR_DISTANCE`.
 
 The `webots/` directory contains a full vendored copy of ArduPilot's Webots
 Python example. Use it for baseline SITL tests, then add custom gate worlds
@@ -116,6 +116,7 @@ Read these before running motion tests:
 
 - [docs/project-status.md](docs/project-status.md): implementation status and anti-hallucination ground truth.
 - [docs/run-simulation.md](docs/run-simulation.md): exact step-by-step runbook.
+- [docs/tuning-guide.md](docs/tuning-guide.md): technical tuning reference for camera geometry, YOLO inference size, OpenCV boxes, gate acquire, and visual servo gains.
 - [docs/webots-yolo-pipeline.md](docs/webots-yolo-pipeline.md): Webots camera stream to YOLO to `GateDetection`.
 - [docs/main-logic-map.md](docs/main-logic-map.md): map of runtime, mission, MAVLink, and detector code.
 - [docs/webots-source-sync.md](docs/webots-source-sync.md): how the vendored Webots tree is sourced and refreshed.

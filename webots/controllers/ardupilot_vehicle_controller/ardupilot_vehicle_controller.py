@@ -67,6 +67,11 @@ def get_args():
                         default=None,
                         help="Port to stream grayscale camera images to. "
                              "If no port is supplied the camera will not be streamed.")
+    parser.add_argument("--camera-format",
+                        type=str,
+                        choices=["gray8", "rgb24"],
+                        default="gray8",
+                        help="Camera stream payload format. Defaults to upstream-compatible gray8.")
 
     parser.add_argument("--rangefinder",
                         type=str,
@@ -113,6 +118,7 @@ if __name__ == "__main__":
                                 camera_name=args.camera,
                                 camera_fps=args.camera_fps,
                                 camera_stream_port=args.camera_port,
+                                camera_stream_format=args.camera_format,
                                 rangefinder_name=args.rangefinder,
                                 rangefinder_fps=args.rangefinder_fps,
                                 rangefinder_stream_port=args.rangefinder_port,

@@ -70,13 +70,13 @@ vendored `webots/` directory.
 The companion app expects MAVLink telemetry on:
 
 ```text
-udp:127.0.0.1:14550
+udp:127.0.0.1:14551
 ```
 
 ## Smoke Test
 
 ```bash
-drone-autonomy --connection udp:127.0.0.1:14550 --mode heartbeat
+drone-autonomy --connection udp:127.0.0.1:14551 --mode heartbeat
 ```
 
 Expected result: the app prints heartbeat and telemetry messages from ArduPilot.
@@ -84,5 +84,5 @@ Expected result: the app prints heartbeat and telemetry messages from ArduPilot.
 Fallback if the console script is not installed in `PATH`:
 
 ```bash
-python -m drone_autonomy.cli --connection udp:127.0.0.1:14550 --mode heartbeat
+python -m drone_autonomy.cli --connection udp:127.0.0.1:14551 --mode heartbeat
 ```

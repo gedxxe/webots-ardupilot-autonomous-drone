@@ -9,10 +9,10 @@ The competition-style task is:
 1. Take off to `1.0 m`.
 2. Search for a hollow gate in front of the drone.
 3. Center on the gate using RGB camera detections.
-4. Approach and pass through the gate.
-5. Move forward while actively acquiring the second gate.
+4. Dwell while centering, validate image-space clearance, then pass through the gate.
+5. Move forward far enough to clear the first obstacle before acquiring the second gate.
 6. Fall back to slow seek if the second gate is not found within distance/time limits.
-7. Center and pass through the second gate.
+7. Dwell, validate clearance, and pass through the second gate.
 8. Continue forward about `2.0 m` after the second gate.
 9. Land.
 
@@ -42,22 +42,82 @@ the gate bounding box. The controller computes:
 
 - normalized horizontal error from image center,
 - normalized vertical error from image center,
-- normalized bounding-box area as a rough closeness signal.
+- normalized bounding-box area as an image-space readiness guard and diagnostic,
+  not as metric distance.
 
 The command output uses body-frame velocity:
 
 - Move right if the gate appears to the right.
 - Move down if the gate appears below center.
-- Yaw toward the gate to keep the camera aligned.
-- Slow forward speed when the gate is not centered.
+- Apply only small yaw correction during centering; aggressive yaw shakes the
+  rigid Webots camera and destabilizes the detector.
+- Use slow forward creep during centering. The actual gate crossing is the
+  forward-only `PASS_GATE` phase.
+- Low-pass filter both image errors and commanded centering velocities.
 
 This is deliberately conservative. It should prefer a clean gate pass over maximum speed while still allowing a faster adaptive acquire phase between gate 1 and gate 2.
 
-## Adaptive Next-Gate Acquire
+## Gate Pass Commit
 
-After passing gate 1, the mission no longer performs a blind fixed-distance sprint. It moves forward at a capped acquire speed while the detector keeps searching for gate 2.
+The mission no longer commits to a pass only because one alignment tick looks
+good. The current pass rule is:
 
-If gate 2 is detected for the required number of ticks, the mission brakes briefly before centering. If gate 2 is not detected before the configured maximum forward distance or timeout, the mission falls back to slow seek for the next gate.
+```text
+stable gate selected
+-> CENTER_GATE visual servo continues
+-> dwell for MISSION_CENTER_DWELL seconds
+-> clearance validator stays true for MISSION_CENTER_CLEARANCE_REQUIRED seconds
+-> bbox area reaches MISSION_GATE_READY_AREA
+-> PASS_GATE forward-only command for MISSION_GATE_PASS_DISTANCE
+```
+
+The default dwell is `5.0 s`. That is deliberate: it gives ArduPilot and the
+vehicle enough time to settle while the camera controller keeps reducing image
+error. It is a tuning parameter, not a hidden delay.
+
+Clearance is image-space validation around the selected bounding-box center. It
+is not metric obstacle avoidance and it does not infer gate depth from RGB. Tune
+these values for camera mounting and physical vehicle margins:
+
+```text
+VISUAL_PASS_TARGET_OFFSET_X/Y
+VISUAL_PASS_CLEARANCE_LEFT/RIGHT/UP/DOWN
+```
+
+`MISSION_GATE_READY_AREA` is also image-space. It prevents a far but centered
+gate from triggering the pass sequence too early. Tune it from diagnostics; do
+not treat it as a calibrated distance unless camera intrinsics and gate physical
+dimensions are added later.
+
+The four clearance margins are asymmetric so the engineer can reserve extra
+space for protrusions such as GPS mounts or landing gear without changing code.
+Once committed to `PASS_GATE`, the mission commands stable forward body
+velocity plus altitude hold; it does not keep lateral/yaw visual corrections
+active inside the gate.
+
+## Next-Gate Acquire
+
+After passing gate 1, the mission first moves forward for
+`MISSION_NEXT_GATE_CLEAR_DISTANCE`. Gate 2 detections are ignored during this
+clear segment so the vehicle does not immediately re-center while it is still
+near the first gate.
+
+After the clear distance, the mission moves forward at a capped acquire speed
+while the detector searches for gate 2. It only treats a next-gate detection as
+actionable after two area gates:
+
+```text
+area < MISSION_NEXT_GATE_MIN_AREA
+  -> ignore as too small/noisy
+MISSION_NEXT_GATE_MIN_AREA <= area < MISSION_GATE_READY_AREA
+  -> keep flying forward while tracking that a far gate exists
+area >= MISSION_GATE_READY_AREA
+  -> count stable detections, then brake before centering
+```
+
+If gate 2 is ready for the required number of ticks, the mission brakes briefly
+before centering. If gate 2 is not ready before the configured maximum forward
+distance or timeout, the mission falls back to slow seek for the next gate.
 
 ## Altitude Control
 
@@ -89,13 +149,18 @@ The altitude input should be fused local telemetry from ArduPilot or a simulator
 ## Robustness Rules
 
 - A single detection must not trigger a phase change unless config allows it.
-- A gate pass requires both alignment and an apparent-size threshold.
-- Loss of detection during centering returns the mission to search instead of continuing blindly.
-- The inter-gate phase is not blind: gate detections can interrupt forward acquire and trigger centering immediately.
-- Gate 2 acquisition includes a short brake-before-center phase to reduce overshoot risk.
+- A gate pass requires dwell, current clearance validator, and the configurable
+  image-space ready-area guard. Area alone must not trigger a pass.
+- Loss of detection during centering uses a short grace window before returning
+  to search.
+- The inter-gate phase first clears the previous gate by forward distance, then
+  can use detections to trigger brake-before-center.
+- Gate 2 acquisition includes area-window gating and a short brake-before-center
+  phase to reduce overshoot risk.
 - Centering commands are altitude-guarded so visual servoing cannot keep descending below the configured floor.
 - Gate clearance and final exit use forward distance from telemetry.
-- Landing is only commanded after the final forward exit distance is reached.
+- Landing is only commanded after the final forward exit distance and a short
+  brake/settle phase are complete.
 
 ## YOLO and Camera Integration
 
@@ -104,6 +169,7 @@ YOLO is implemented behind the `GateDetection` contract:
 ```text
 Webots TCP camera frame
 -> YoloGateDetector
+-> GateTargetSelector
 -> GateDetection
 -> MissionTelemetry.gate_detection
 ```
@@ -111,10 +177,14 @@ Webots TCP camera frame
 Detector-specific code stays in `src/drone_autonomy/perception/`. The current
 simulation model is versioned at `models/gate_yolov8n_best.pt` and loaded only
 by runtime detector profiles, not by the mission state machine.
+The current model-safe filter is class name `Goals-Detection` plus YOLO class
+id `3`; do not assume class id `0` is a gate after retraining with extra
+labels.
 
-Current caveat: upstream `iris_camera.wbt` streams grayscale frames. The adapter
-expands those frames to three channels for YOLO, so this is a valid simulation
-wiring path but not final RGB-camera validation.
+Current simulation profile: this repo's `iris_camera.wbt` requests `rgb24`
+from the vendored Webots controller. `gray8` remains supported only for
+upstream-compatible fallback worlds; seeing `rgb8_from_gray8` in diagnostics
+means the run is not using the current RGB simulation path.
 
 Future camera work should replace only the frame source, for example with a
 C920/OpenCV adapter, while preserving the same `YoloGateDetector ->

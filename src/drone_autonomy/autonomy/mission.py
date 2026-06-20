@@ -47,16 +47,23 @@ class GateMissionConfig:
     takeoff_settle_tolerance_m: float = 0.06
     takeoff_required_stable_ticks: int = 8
     takeoff_timeout_s: float = 20.0
-    max_detection_age_s: float = 0.35
+    max_detection_age_s: float = 0.75
     required_detection_ticks: int = 2
-    required_aligned_ticks: int = 4
+    center_dwell_s: float = 5.00
+    center_clearance_required_s: float = 0.30
+    center_lost_detection_grace_ticks: int = 10
     seek_yaw_rate_rad_s: float = 0.30
     gate_pass_distance_m: float = 1.25
     gate_pass_speed_m_s: float = 1.20
-    next_gate_acquire_speed_m_s: float = 2.50
+    next_gate_acquire_speed_m_s: float = 1.50
+    next_gate_acquire_min_clear_distance_m: float = 2.00
+    next_gate_acquire_min_area_ratio: float = 0.015
+    gate_ready_area_ratio: float = 0.060
     next_gate_acquire_max_distance_m: float = 6.00
     next_gate_acquire_timeout_s: float = 6.00
     brake_settle_s: float = 1.00
+    brake_ramp_s: float = 0.70
+    brake_altitude_hold_enabled: bool = False
     final_exit_distance_m: float = 2.00
     final_exit_speed_m_s: float = 1.50
     min_centering_altitude_m: float = 0.65
@@ -72,10 +79,22 @@ class GateMissionConfig:
     def __post_init__(self) -> None:
         if self.gate_count < 1:
             raise ValueError("gate_count must be at least 1")
+        if self.max_detection_age_s <= 0.0:
+            raise ValueError("max_detection_age_s must be positive")
         if self.required_detection_ticks < 1:
             raise ValueError("required_detection_ticks must be at least 1")
-        if self.required_aligned_ticks < 1:
-            raise ValueError("required_aligned_ticks must be at least 1")
+        if self.center_dwell_s < 0.0:
+            raise ValueError("center_dwell_s must be non-negative")
+        if self.center_clearance_required_s < 0.0:
+            raise ValueError("center_clearance_required_s must be non-negative")
+        if self.center_lost_detection_grace_ticks < 0:
+            raise ValueError("center_lost_detection_grace_ticks must be non-negative")
+        if self.brake_settle_s < 0.0:
+            raise ValueError("brake_settle_s must be non-negative")
+        if self.brake_ramp_s < 0.0:
+            raise ValueError("brake_ramp_s must be non-negative")
+        if self.brake_ramp_s > self.brake_settle_s and self.brake_settle_s > 0.0:
+            raise ValueError("brake_ramp_s must be <= brake_settle_s")
         if self.takeoff_altitude_m <= 0.0:
             raise ValueError("takeoff_altitude_m must be positive")
         if self.takeoff_settle_tolerance_m < 0.0:
@@ -86,6 +105,21 @@ class GateMissionConfig:
             raise ValueError("final_exit_distance_m must be non-negative")
         if self.next_gate_acquire_max_distance_m < 0.0:
             raise ValueError("next_gate_acquire_max_distance_m must be non-negative")
+        if self.next_gate_acquire_min_clear_distance_m < 0.0:
+            raise ValueError(
+                "next_gate_acquire_min_clear_distance_m must be non-negative"
+            )
+        if self.next_gate_acquire_min_area_ratio < 0.0:
+            raise ValueError("next_gate_acquire_min_area_ratio must be non-negative")
+        if self.gate_ready_area_ratio < 0.0:
+            raise ValueError("gate_ready_area_ratio must be non-negative")
+        if (
+            self.gate_ready_area_ratio > 0.0
+            and self.next_gate_acquire_min_area_ratio > self.gate_ready_area_ratio
+        ):
+            raise ValueError(
+                "next_gate_acquire_min_area_ratio must be <= gate_ready_area_ratio"
+            )
         if self.next_gate_acquire_timeout_s < 0.0:
             raise ValueError("next_gate_acquire_timeout_s must be non-negative")
 
@@ -151,9 +185,11 @@ class GateAutonomyMission:
         self.phase_started_forward_m = 0.0
         self._mission_started_s: float | None = None
         self._detection_ticks = 0
-        self._aligned_ticks = 0
+        self._lost_detection_ticks = 0
+        self._clearance_started_s: float | None = None
         self._takeoff_stable_ticks = 0
         self._brake_next_phase = MissionPhase.SEEK_GATE
+        self._brake_entry_speed_m_s = 0.0
 
     def update(self, telemetry: MissionTelemetry) -> MissionOutput:
         """Advance the mission by one tick and return one command.
@@ -271,8 +307,23 @@ class GateAutonomyMission:
     def _run_center_gate(self, telemetry: MissionTelemetry) -> MissionOutput:
         detection = self._fresh_detection(telemetry)
         if detection is None:
+            self._lost_detection_ticks += 1
+            self._clearance_started_s = None
+            if self._lost_detection_ticks <= self.config.center_lost_detection_grace_ticks:
+                return self._output(
+                    self._velocity_with_altitude_hold(
+                        telemetry,
+                        reason=(
+                            "brief gate detection loss "
+                            f"{self._lost_detection_ticks}/"
+                            f"{self.config.center_lost_detection_grace_ticks}"
+                        ),
+                    ),
+                    f"holding gate {self.gate_index + 1} target loss",
+                )
             self._enter(MissionPhase.SEEK_GATE, telemetry)
             return self._run_seek_gate(telemetry)
+        self._lost_detection_ticks = 0
 
         servo = self.visual_servo.update(detection)
         guarded_command = self._apply_centering_altitude_guard(
@@ -281,18 +332,45 @@ class GateAutonomyMission:
         )
         if guarded_command != servo.command:
             servo = replace(servo, command=guarded_command)
-        if servo.pass_ready:
-            self._aligned_ticks += 1
-        else:
-            self._aligned_ticks = 0
 
-        if self._aligned_ticks >= self.config.required_aligned_ticks:
+        if servo.clearance_ready:
+            if self._clearance_started_s is None:
+                self._clearance_started_s = telemetry.now_s
+        else:
+            self._clearance_started_s = None
+
+        dwell_s = self._phase_elapsed_s(telemetry)
+        clearance_s = 0.0
+        if self._clearance_started_s is not None:
+            clearance_s = telemetry.now_s - self._clearance_started_s
+
+        area_ratio = self._detection_area_ratio(detection)
+        area_ready = self._gate_area_ready(area_ratio)
+        if (
+            self._clearance_started_s is not None
+            and dwell_s >= self.config.center_dwell_s
+            and clearance_s >= self.config.center_clearance_required_s
+            and area_ready
+        ):
             self._enter(MissionPhase.PASS_GATE, telemetry)
             return self._run_pass_gate(telemetry)
 
+        area_detail = ""
+        if self.config.gate_ready_area_ratio > 0.0:
+            area_detail = (
+                f" area={min(area_ratio, self.config.gate_ready_area_ratio):0.3f}/"
+                f"{self.config.gate_ready_area_ratio:0.3f}"
+            )
         return self._output(
             servo.command,
-            f"centering gate {self.gate_index + 1}",
+            (
+                f"centering gate {self.gate_index + 1} "
+                f"dwell={min(dwell_s, self.config.center_dwell_s):0.1f}/"
+                f"{self.config.center_dwell_s:0.1f}s "
+                f"clearance={min(clearance_s, self.config.center_clearance_required_s):0.1f}/"
+                f"{self.config.center_clearance_required_s:0.1f}s"
+                f"{area_detail}"
+            ),
             servo=servo,
         )
 
@@ -322,15 +400,29 @@ class GateAutonomyMission:
         and commits to centering as soon as the next gate is seen consistently.
         """
 
-        detection = self._fresh_detection(telemetry)
-        if detection is not None:
+        ignore_detection = (
+            self._phase_forward_delta_m(telemetry)
+            < self.config.next_gate_acquire_min_clear_distance_m
+        )
+        detection = None if ignore_detection else self._fresh_detection(telemetry)
+        area_ratio = self._detection_area_ratio(detection) if detection is not None else 0.0
+        if detection is not None and area_ratio < self.config.next_gate_acquire_min_area_ratio:
+            detection = None
+
+        ready_detection = (
+            detection is not None and self._gate_area_ready(area_ratio)
+        )
+        if ready_detection:
             self._detection_ticks += 1
         else:
             self._detection_ticks = 0
 
         if self._detection_ticks >= self.config.required_detection_ticks:
-            self._brake_next_phase = MissionPhase.CENTER_GATE
-            self._enter(MissionPhase.BRAKE, telemetry)
+            self._enter_brake(
+                telemetry,
+                next_phase=MissionPhase.CENTER_GATE,
+                entry_speed_m_s=self.config.next_gate_acquire_speed_m_s,
+            )
             return self._run_brake(telemetry)
 
         if (
@@ -347,7 +439,7 @@ class GateAutonomyMission:
                 body_vx_m_s=self.config.next_gate_acquire_speed_m_s,
                 reason="adaptive next-gate acquire",
             ),
-            f"acquiring gate {self.gate_index + 1}",
+            self._next_gate_acquire_detail(ignore_detection, detection, area_ratio),
         )
 
     def _run_brake(self, telemetry: MissionTelemetry) -> MissionOutput:
@@ -357,20 +449,32 @@ class GateAutonomyMission:
             self._enter(next_phase, telemetry)
             if next_phase == MissionPhase.CENTER_GATE:
                 return self._run_center_gate(telemetry)
+            if next_phase == MissionPhase.LAND:
+                return self._run_land(telemetry)
             return self._run_seek_gate(telemetry)
 
         return self._output(
             self._velocity_with_altitude_hold(
                 telemetry,
+                body_vx_m_s=self._brake_forward_speed_m_s(telemetry),
+                altitude_hold_enabled=self.config.brake_altitude_hold_enabled,
                 reason="brake and settle",
             ),
-            "braking",
+            (
+                "braking before landing"
+                if self._brake_next_phase == MissionPhase.LAND
+                else "braking"
+            ),
         )
 
     def _run_final_exit(self, telemetry: MissionTelemetry) -> MissionOutput:
         if self._phase_forward_delta_m(telemetry) >= self.config.final_exit_distance_m:
-            self._enter(MissionPhase.LAND, telemetry)
-            return self._run_land(telemetry)
+            self._enter_brake(
+                telemetry,
+                next_phase=MissionPhase.LAND,
+                entry_speed_m_s=self.config.final_exit_speed_m_s,
+            )
+            return self._run_brake(telemetry)
 
         return self._output(
             self._velocity_with_altitude_hold(
@@ -397,6 +501,40 @@ class GateAutonomyMission:
         if not detection.is_fresh(telemetry.now_s, self.config.max_detection_age_s):
             return None
         return detection
+
+    def _detection_area_ratio(self, detection: GateDetection) -> float:
+        return detection.bbox.normalized_area(self.visual_servo.config.frame_shape())
+
+    def _gate_area_ready(self, area_ratio: float) -> bool:
+        return (
+            self.config.gate_ready_area_ratio <= 0.0
+            or area_ratio >= self.config.gate_ready_area_ratio
+        )
+
+    def _next_gate_acquire_detail(
+        self,
+        ignore_detection: bool,
+        detection: GateDetection | None,
+        area_ratio: float,
+    ) -> str:
+        gate_number = self.gate_index + 1
+        if ignore_detection:
+            return f"clearing previous gate before acquiring gate {gate_number}"
+        if detection is None:
+            return f"acquiring gate {gate_number}"
+        if not self._gate_area_ready(area_ratio):
+            return (
+                f"approaching gate {gate_number} "
+                f"area={area_ratio:0.3f}/"
+                f"{self.config.gate_ready_area_ratio:0.3f}"
+            )
+        return (
+            f"acquiring gate {gate_number} "
+            f"ready area={area_ratio:0.3f}/"
+            f"{self.config.gate_ready_area_ratio:0.3f} "
+            f"ticks={self._detection_ticks}/"
+            f"{self.config.required_detection_ticks}"
+        )
 
     def _apply_centering_altitude_guard(
         self,
@@ -433,11 +571,17 @@ class GateAutonomyMission:
         body_vx_m_s: float = 0.0,
         body_vy_m_s: float = 0.0,
         yaw_rate_rad_s: float = 0.0,
+        altitude_hold_enabled: bool | None = None,
         reason: str = "",
     ) -> VehicleCommand:
         body_vz_m_s = 0.0
         altitude_reason = ""
-        if self.config.altitude_hold_enabled:
+        use_altitude_hold = (
+            self.config.altitude_hold_enabled
+            if altitude_hold_enabled is None
+            else altitude_hold_enabled
+        )
+        if use_altitude_hold:
             body_vz_m_s = self.altitude_hold.body_vz_for_altitude(telemetry.altitude_m)
             if body_vz_m_s != 0.0:
                 altitude_reason = "; altitude hold"
@@ -450,6 +594,30 @@ class GateAutonomyMission:
             reason=f"{reason}{altitude_reason}",
         )
 
+    def _enter_brake(
+        self,
+        telemetry: MissionTelemetry,
+        *,
+        next_phase: MissionPhase,
+        entry_speed_m_s: float,
+    ) -> None:
+        """Enter brake with the previous forward speed for a smooth ramp-down."""
+
+        self._brake_next_phase = next_phase
+        self._brake_entry_speed_m_s = max(0.0, entry_speed_m_s)
+        self._enter(MissionPhase.BRAKE, telemetry)
+
+    def _brake_forward_speed_m_s(self, telemetry: MissionTelemetry) -> float:
+        """Ramp forward velocity down instead of stepping immediately to zero."""
+
+        if self.config.brake_ramp_s <= 0.0 or self._brake_entry_speed_m_s <= 0.0:
+            return 0.0
+        elapsed_s = self._phase_elapsed_s(telemetry)
+        if elapsed_s >= self.config.brake_ramp_s:
+            return 0.0
+        remaining_ratio = 1.0 - (elapsed_s / self.config.brake_ramp_s)
+        return self._brake_entry_speed_m_s * remaining_ratio
+
     def _enter(self, phase: MissionPhase, telemetry: MissionTelemetry) -> None:
         # Phase-distance checks use the forward position at entry as the zero
         # point. This is why final exit is a forward-distance check, not a
@@ -458,7 +626,8 @@ class GateAutonomyMission:
         self.phase_started_s = telemetry.now_s
         self.phase_started_forward_m = telemetry.forward_position_m
         self._detection_ticks = 0
-        self._aligned_ticks = 0
+        self._lost_detection_ticks = 0
+        self._clearance_started_s = None
         if phase == MissionPhase.TAKEOFF:
             self._takeoff_stable_ticks = 0
         if phase in {MissionPhase.SEEK_GATE, MissionPhase.CENTER_GATE}:

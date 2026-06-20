@@ -60,6 +60,7 @@ class WebotsArduVehicle():
                  camera_name: str = None,
                  camera_fps: int = 10,
                  camera_stream_port: int = None,
+                 camera_stream_format: str = "gray8",
                  rangefinder_name: str = None,
                  rangefinder_fps: int = 10,
                  rangefinder_stream_port: int = None,
@@ -79,8 +80,9 @@ class WebotsArduVehicle():
             gps_name (str, optional): Webots GPS name. Defaults to "gps".
             camera_name (str, optional): Webots camera name. Defaults to None.
             camera_fps (int, optional): Camera FPS. Lower FPS runs better in sim. Defaults to 10.
-            camera_stream_port (int, optional): Port to stream grayscale camera images to.
+            camera_stream_port (int, optional): Port to stream camera images to.
                                                 If no port is supplied the camera will not be streamed. Defaults to None.
+            camera_stream_format (str, optional): Camera stream format, either "gray8" or "rgb24". Defaults to "gray8".
             rangefinder_name (str, optional): Webots RangeFinder name. Defaults to None.
             rangefinder_fps (int, optional): RangeFinder FPS. Lower FPS runs better in sim. Defaults to 10.
             rangefinder_stream_port (int, optional): Port to stream rangefinder images to.
@@ -129,7 +131,7 @@ class WebotsArduVehicle():
             if camera_stream_port is not None:
                 self._camera_thread = Thread(daemon=True,
                                              target=self._handle_image_stream,
-                                             args=[self.camera, camera_stream_port])
+                                             args=[self.camera, camera_stream_port, camera_stream_format])
                 self._camera_thread.start()
 
         # init rangefinder
@@ -141,7 +143,7 @@ class WebotsArduVehicle():
             if rangefinder_stream_port is not None:
                 self._rangefinder_thread = Thread(daemon=True,
                                                   target=self._handle_image_stream,
-                                                  args=[self.rangefinder, rangefinder_stream_port])
+                                                  args=[self.rangefinder, rangefinder_stream_port, "gray8"])
                 self._rangefinder_thread.start()
 
         # init motors (and setup velocity control)
@@ -272,12 +274,13 @@ class WebotsArduVehicle():
         for i, m in enumerate(self._motors):
             m.setVelocity(linearized_motor_commands[i] * min(m.getMaxVelocity(), self.motor_velocity_cap))
 
-    def _handle_image_stream(self, camera: Union[Camera, RangeFinder], port: int):
-        """Stream grayscale images over TCP
+    def _handle_image_stream(self, camera: Union[Camera, RangeFinder], port: int, stream_format: str = "gray8"):
+        """Stream camera images over TCP
 
         Args:
             camera (Camera or RangeFinder): the camera to get images from
             port (int): port to send images over
+            stream_format (str): payload format for Camera streams, either "gray8" or "rgb24"
         """
 
         # get camera info
@@ -286,9 +289,13 @@ class WebotsArduVehicle():
             cam_sample_period = self.camera.getSamplingPeriod()
             cam_width = self.camera.getWidth()
             cam_height = self.camera.getHeight()
+            if stream_format not in {"gray8", "rgb24"}:
+                print(sys.stderr, f"Invalid camera stream format '{stream_format}', falling back to gray8 (I{self._instance})")
+                stream_format = "gray8"
             print(f"Camera stream started at 127.0.0.1:{port} (I{self._instance}) "
-                  f"({cam_width}x{cam_height} @ {1000/cam_sample_period:0.2f}fps)")
+                  f"({cam_width}x{cam_height} @ {1000/cam_sample_period:0.2f}fps, {stream_format})")
         elif isinstance(camera, RangeFinder):
+            stream_format = "gray8"
             cam_sample_period = self.rangefinder.getSamplingPeriod()
             cam_width = self.rangefinder.getWidth()
             cam_height = self.rangefinder.getHeight()
@@ -319,7 +326,10 @@ class WebotsArduVehicle():
 
                     # get image
                     if isinstance(camera, Camera):
-                        img = self.get_camera_gray_image()
+                        if stream_format == "rgb24":
+                            img = self.get_camera_image()
+                        else:
+                            img = self.get_camera_gray_image()
                     elif isinstance(camera, RangeFinder):
                         img = self.get_rangefinder_image()
 
@@ -357,7 +367,10 @@ class WebotsArduVehicle():
         """Get the RGB image from the camera as a numpy array of bytes"""
         img = self.camera.getImage()
         img = np.frombuffer(img, np.uint8).reshape((self.camera.getHeight(), self.camera.getWidth(), 4))
-        return img[:, :, :3] # RGB only, no Alpha
+        # Webots exposes camera bytes as BGRA in the Python buffer. Return true
+        # RGB so downstream ML code sees the same channel order as ordinary
+        # image/video loaders.
+        return img[:, :, [2, 1, 0]]
 
     def get_rangefinder_image(self, use_int16: bool = False) -> np.ndarray:
         """Get the rangefinder depth image as a numpy array of int8 or int16"""\

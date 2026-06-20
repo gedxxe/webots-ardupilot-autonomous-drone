@@ -19,7 +19,8 @@ Before any autonomy command test:
 - `configs/sitl_webots.env` points to the correct ArduPilot checkout.
 - Python virtual environment is active.
 - `pip install -e ".[dev]"` has completed.
-- `drone-autonomy --mode heartbeat --connection udp:127.0.0.1:14550` succeeds.
+- `drone-autonomy --mode heartbeat --connection udp:127.0.0.1:14551` succeeds
+  when Mission Planner is using `14550`.
 - `LOCAL_POSITION_NED` appears in MAVLink listen output.
 
 Before `--send-commands`:
@@ -34,7 +35,10 @@ Before `--send-commands`:
 - Mission state machine for two gates.
 - ArduPilot-managed 1 m takeoff profile using `MAV_CMD_NAV_TAKEOFF`, followed by
   telemetry settle gating (`+/-0.06 m` non-landed settle band).
-- Adaptive next-gate acquire instead of blind sprint.
+- Center-dwell plus configurable image-space clearance before committed gate pass.
+- Forward-only committed pass segment after clearance validation.
+- Configurable post-gate clear distance before gate 2 acquisition instead of a
+  blind timed sprint.
 - Brake-before-center after the next gate is detected during adaptive acquire.
 - Altitude-hold velocity bias from fused `LOCAL_POSITION_NED` altitude.
 - MAVLink telemetry adapter for heartbeat, arm state, landed state, altitude, and forward position.
@@ -74,9 +78,12 @@ before they are treated as a competition-grade world.
 
 - `COMMAND_ACK` parsing and retry policy.
 - Lost-heartbeat failsafe in the runtime loop.
-- True RGB Webots stream; upstream `iris_camera.wbt` currently streams grayscale.
+- Confirmed `rgb8` diagnostics from this repo's `iris_camera.wbt` profile. If
+  diagnostics show `rgb8_from_gray8`, the run is still on an upstream-compatible
+  grayscale path and should not be compared directly with normal RGB video.
 - Real-hardware C920/OpenCV camera source.
-- User-editable mission tuning file.
+- Dedicated YAML/TOML mission tuning file. Current tuning is available through
+  CLI flags and `configs/autonomy_runtime.env`.
 - Automatic course-frame calibration.
 - Hardware launch profile.
 
@@ -90,13 +97,24 @@ before they are treated as a competition-grade world.
 - ArduPilot accepts `MAV_CMD_NAV_TAKEOFF` to `1.0 m` in GUIDED mode and settles
   without companion-side body-z velocity during TAKEOFF.
 - Gate pass distance and final forward exit distance are realistic for the world scale.
-- `webots-yolo` detections only occur for model class id `0`
-  (`Goals-Detection`) and not unrelated objects.
+- `MISSION_CENTER_DWELL`, `VISUAL_PASS_CLEARANCE_*`, and
+  `MISSION_NEXT_GATE_CLEAR_DISTANCE` are tuned for the actual drone dimensions,
+  camera mount, and gate opening.
+- `MISSION_NEXT_GATE_MIN_AREA` and `MISSION_GATE_READY_AREA` are tuned from the
+  OpenCV diagnostics view so gate 2 is not accepted while it is still too far
+  away in image space.
+- `YOLO_IMGSZ` is treated as inference/letterbox size only. Camera geometry for
+  visual servo and diagnostics remains `VISUAL_FRAME_WIDTH/HEIGHT`, currently
+  640x480 for `iris_camera.wbt`.
+- `webots-yolo` detections only occur for class name `Goals-Detection` plus
+  the verified gate class id `3`, and not unrelated objects such as
+  Dog/Forklift/Table.
 - Synthetic detector should not be used for judging gate behavior.
 
 ## Known Design Choices
 
 - Sensor fusion belongs to ArduPilot EKF or simulator-equivalent fused telemetry, not raw Python blending.
-- RGB detection controls alignment, not metric distance.
-- Bounding-box area is only a rough pass-readiness signal until gate dimensions/camera calibration are known.
+- RGB detection controls alignment and image-space clearance, not metric distance.
+- Bounding-box area is an image-space readiness guard only until gate dimensions
+  and camera calibration are known; it is not metric distance.
 - Runtime defaults to dry-run so accidental hardware motion does not happen.

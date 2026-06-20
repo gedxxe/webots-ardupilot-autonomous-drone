@@ -8,13 +8,19 @@ from pymavlink import mavutil
 
 from drone_autonomy.autonomy.mission import (
     GateAutonomyMission,
+    GateMissionConfig,
     MissionOutput,
     MissionPhase,
+)
+from drone_autonomy.control.visual_servo import (
+    GateVisualServoController,
+    VisualServoConfig,
 )
 from drone_autonomy.mavlink.commands import MavlinkCommandAdapter
 from drone_autonomy.mavlink.telemetry import CourseFrame, MavlinkTelemetryAdapter
 from drone_autonomy.perception.detections import GateDetection
 from drone_autonomy.perception.synthetic import SyntheticGateProvider
+from drone_autonomy.runtime.config import AutonomyRuntimeConfig
 
 
 class GateDetectionProvider(Protocol):
@@ -29,35 +35,6 @@ class GateDetectionProvider(Protocol):
 
     def close(self) -> None:
         """Release provider resources."""
-
-
-@dataclass(frozen=True)
-class AutonomyRuntimeConfig:
-    """Configuration for the process-level autonomy loop.
-
-    Defaults are intentionally conservative: `send_commands=False` means the
-    runtime can be pointed at SITL to inspect decisions without moving the
-    vehicle.
-    """
-
-    connection: str = "udp:127.0.0.1:14550"
-    loop_hz: float = 20.0
-    max_runtime_s: float = 180.0
-    heartbeat_timeout_s: float = 30.0
-    status_interval_s: float = 1.0
-    detector: str = "none"
-    send_commands: bool = False
-    course_forward_x: float = 1.0
-    course_forward_y: float = 0.0
-    webots_camera_host: str = "127.0.0.1"
-    webots_camera_port: int = 5599
-    webots_camera_encoding: str = "gray8"
-    yolo_model_path: str = ""
-    yolo_confidence: float = 0.35
-    yolo_image_size_px: int = 640
-    yolo_device: str = "cpu"
-    yolo_gate_class_names: tuple[str, ...] = ()
-    yolo_gate_class_ids: tuple[int, ...] = (0,)
 
 
 @dataclass(frozen=True)
@@ -106,7 +83,7 @@ class AutonomyRuntime:
             f"loop_hz={self.config.loop_hz}"
         )
 
-        mission = GateAutonomyMission()
+        mission = self._build_mission()
         command_adapter = MavlinkCommandAdapter(master)
         telemetry_adapter = MavlinkTelemetryAdapter(
             CourseFrame(
@@ -115,7 +92,9 @@ class AutonomyRuntime:
             )
         )
         telemetry_adapter.update_message(heartbeat)
-        synthetic_gate = SyntheticGateProvider() if self.config.detector == "synthetic" else None
+        synthetic_gate = (
+            SyntheticGateProvider() if self.config.detector == "synthetic" else None
+        )
         webots_yolo_gate = self._build_webots_yolo_provider()
 
         try:
@@ -146,6 +125,10 @@ class AutonomyRuntime:
                 elif webots_yolo_gate is not None:
                     # Real perception still returns only the `GateDetection`
                     # contract. Camera/model details remain outside the mission.
+                    webots_yolo_gate.update_context(
+                        phase=mission.phase.value,
+                        gate_index=mission.gate_index,
+                    )
                     detection = webots_yolo_gate.detect(loop_started_s)
 
                 telemetry = telemetry_adapter.snapshot(loop_started_s, detection)
@@ -166,11 +149,23 @@ class AutonomyRuntime:
 
                 if loop_started_s >= next_status_s:
                     sent = "sent" if self.config.send_commands else "dry-run"
+                    servo_detail = ""
+                    if last_output.servo is not None:
+                        servo = last_output.servo
+                        servo_detail = (
+                            f" servo_err=({servo.error_x:+0.3f},"
+                            f"{servo.error_y:+0.3f})"
+                            f" area={servo.area_ratio:0.3f}"
+                            f" aligned={servo.is_aligned}"
+                            f" clearance={servo.clearance_ready}"
+                            f" pass_ready={servo.pass_ready}"
+                        )
                     print(
                         f"{sent} phase={last_output.phase.value} "
                         f"gate={last_output.gate_index + 1} "
                         f"cmd={last_output.command.kind.value} "
                         f"detail={last_output.detail}"
+                        f"{servo_detail}"
                     )
                     next_status_s = loop_started_s + self.config.status_interval_s
 
@@ -186,6 +181,77 @@ class AutonomyRuntime:
 
         return AutonomyRuntimeResult(False, mission.phase, last_output)
 
+    def _build_mission(self) -> GateAutonomyMission:
+        """Build mission/control objects from process-level runtime config."""
+
+        servo_config = VisualServoConfig(
+            frame_width_px=self.config.visual_frame_width_px,
+            frame_height_px=self.config.visual_frame_height_px,
+            min_confidence=self.config.visual_min_confidence,
+            filter_alpha=self.config.visual_filter_alpha,
+            command_filter_alpha=self.config.visual_command_filter_alpha,
+            center_deadband_x=self.config.visual_center_deadband_x,
+            center_deadband_y=self.config.visual_center_deadband_y,
+            aligned_error_x=self.config.visual_aligned_error_x,
+            aligned_error_y=self.config.visual_aligned_error_y,
+            pass_target_offset_x=self.config.visual_pass_target_offset_x,
+            pass_target_offset_y=self.config.visual_pass_target_offset_y,
+            pass_clearance_left_error=self.config.visual_pass_clearance_left_error,
+            pass_clearance_right_error=self.config.visual_pass_clearance_right_error,
+            pass_clearance_up_error=self.config.visual_pass_clearance_up_error,
+            pass_clearance_down_error=self.config.visual_pass_clearance_down_error,
+            max_error_for_forward=self.config.visual_max_error_for_forward,
+            min_forward_speed_m_s=self.config.visual_min_forward_speed_m_s,
+            max_forward_speed_m_s=self.config.visual_max_forward_speed_m_s,
+            lateral_kp=self.config.visual_lateral_kp,
+            vertical_kp=self.config.visual_vertical_kp,
+            yaw_kp=self.config.visual_yaw_kp,
+            max_lateral_speed_m_s=self.config.visual_max_lateral_speed_m_s,
+            max_vertical_speed_m_s=self.config.visual_max_vertical_speed_m_s,
+            max_yaw_rate_rad_s=self.config.visual_max_yaw_rate_rad_s,
+        )
+        mission_config = GateMissionConfig(
+            max_detection_age_s=self.config.mission_max_detection_age_s,
+            required_detection_ticks=self.config.mission_required_detection_ticks,
+            center_dwell_s=self.config.mission_center_dwell_s,
+            center_clearance_required_s=(
+                self.config.mission_center_clearance_required_s
+            ),
+            center_lost_detection_grace_ticks=(
+                self.config.mission_center_lost_detection_grace_ticks
+            ),
+            seek_yaw_rate_rad_s=self.config.mission_seek_yaw_rate_rad_s,
+            gate_pass_distance_m=self.config.mission_gate_pass_distance_m,
+            gate_pass_speed_m_s=self.config.mission_gate_pass_speed_m_s,
+            next_gate_acquire_speed_m_s=(
+                self.config.mission_next_gate_acquire_speed_m_s
+            ),
+            next_gate_acquire_min_clear_distance_m=(
+                self.config.mission_next_gate_acquire_min_clear_distance_m
+            ),
+            next_gate_acquire_min_area_ratio=(
+                self.config.mission_next_gate_acquire_min_area_ratio
+            ),
+            gate_ready_area_ratio=self.config.mission_gate_ready_area_ratio,
+            next_gate_acquire_max_distance_m=(
+                self.config.mission_next_gate_acquire_max_distance_m
+            ),
+            next_gate_acquire_timeout_s=(
+                self.config.mission_next_gate_acquire_timeout_s
+            ),
+            brake_settle_s=self.config.mission_brake_settle_s,
+            brake_ramp_s=self.config.mission_brake_ramp_s,
+            brake_altitude_hold_enabled=(
+                self.config.mission_brake_altitude_hold_enabled
+            ),
+            final_exit_distance_m=self.config.mission_final_exit_distance_m,
+            final_exit_speed_m_s=self.config.mission_final_exit_speed_m_s,
+        )
+        return GateAutonomyMission(
+            mission_config,
+            GateVisualServoController(servo_config),
+        )
+
     def _build_webots_yolo_provider(self) -> GateDetectionProvider | None:
         """Build the optional Webots+YOLO provider only when requested."""
 
@@ -199,6 +265,7 @@ class AutonomyRuntime:
             WebotsYoloConfig,
             WebotsYoloGateProvider,
         )
+        from drone_autonomy.perception.target_selector import GateTargetSelectorConfig
         from drone_autonomy.perception.yolo import YoloGateConfig
 
         print(
@@ -207,12 +274,18 @@ class AutonomyRuntime:
             f"encoding={self.config.webots_camera_encoding} "
             f"model={self.config.yolo_model_path}"
         )
+        print(
+            "webots-yolo class_filter "
+            f"names={_format_filter_values(self.config.yolo_gate_class_names)} "
+            f"ids={_format_filter_values(self.config.yolo_gate_class_ids)}"
+        )
         return WebotsYoloGateProvider(
             WebotsYoloConfig(
                 camera=WebotsCameraConfig(
                     host=self.config.webots_camera_host,
                     port=self.config.webots_camera_port,
                     encoding=self.config.webots_camera_encoding,
+                    idle_reconnect_s=self.config.webots_camera_idle_reconnect_s,
                 ),
                 yolo=YoloGateConfig(
                     model_path=self.config.yolo_model_path,
@@ -221,6 +294,45 @@ class AutonomyRuntime:
                     device=self.config.yolo_device,
                     gate_class_names=self.config.yolo_gate_class_names,
                     gate_class_ids=self.config.yolo_gate_class_ids,
+                ),
+                selector=GateTargetSelectorConfig(
+                    min_seek_confidence=self.config.gate_selector_min_seek_confidence,
+                    min_track_confidence=self.config.gate_selector_min_track_confidence,
+                    min_area_ratio=self.config.gate_selector_min_area_ratio,
+                    min_aspect_ratio=self.config.gate_selector_min_aspect_ratio,
+                    max_aspect_ratio=self.config.gate_selector_max_aspect_ratio,
+                    min_appearance_score=(
+                        self.config.gate_selector_min_appearance_score
+                    ),
+                    appearance_weight=self.config.gate_selector_appearance_weight,
+                    stable_window_frames=self.config.gate_selector_stable_window_frames,
+                    required_stable_frames=self.config.gate_selector_required_stable_frames,
+                ),
+                detection_stale_s=self.config.webots_detection_stale_s,
+                diagnostics_window=self.config.webots_diagnostics_window,
+                diagnostics_pass_target_offset_x=(
+                    self.config.visual_pass_target_offset_x
+                ),
+                diagnostics_pass_target_offset_y=(
+                    self.config.visual_pass_target_offset_y
+                ),
+                diagnostics_pass_clearance_left_error=(
+                    self.config.visual_pass_clearance_left_error
+                ),
+                diagnostics_pass_clearance_right_error=(
+                    self.config.visual_pass_clearance_right_error
+                ),
+                diagnostics_pass_clearance_up_error=(
+                    self.config.visual_pass_clearance_up_error
+                ),
+                diagnostics_pass_clearance_down_error=(
+                    self.config.visual_pass_clearance_down_error
+                ),
+                diagnostics_next_gate_min_area_ratio=(
+                    self.config.mission_next_gate_acquire_min_area_ratio
+                ),
+                diagnostics_gate_ready_area_ratio=(
+                    self.config.mission_gate_ready_area_ratio
                 ),
             )
         )
@@ -245,3 +357,11 @@ class AutonomyRuntime:
         remaining_s = period_s - (monotonic() - loop_started_s)
         if remaining_s > 0.0:
             sleep(remaining_s)
+
+
+def _format_filter_values(values: tuple[object, ...]) -> str:
+    """Return a compact operator-facing display for YOLO class filters."""
+
+    if not values:
+        return "<none>"
+    return ",".join(str(value) for value in values)

@@ -17,6 +17,7 @@ dev = [
 ]
 vision = [
     "numpy>=1.26",
+    "opencv-python>=4.9",
     "ultralytics>=8.0",
 ]
 

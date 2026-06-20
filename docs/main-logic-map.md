@@ -98,9 +98,17 @@ Important:
 
 - `TAKEOFF` sends `MAV_CMD_NAV_TAKEOFF` to `1.0 m` and waits for telemetry
   settle; it does not command companion-side body-z velocity.
-- `NEXT_GATE_ACQUIRE` is not blind sprint.
+- `CENTER_GATE` keeps visual servoing active until the dwell timer and
+  clearance validator both pass and the selected bbox reaches
+  `MISSION_GATE_READY_AREA`.
+- `PASS_GATE` is a committed forward-only body-velocity segment plus altitude
+  hold. Lateral/yaw visual corrections are disabled during this committed pass.
+- `NEXT_GATE_ACQUIRE` first clears the previous obstacle by forward distance,
+  then uses `MISSION_NEXT_GATE_MIN_AREA` and `MISSION_GATE_READY_AREA` before
+  counting gate 2 detections. It is not a hardcoded timed sprint.
 - `BRAKE` after gate 2 detection reduces overshoot before centering.
-- `FINAL_EXIT` measures forward distance, not altitude.
+- `FINAL_EXIT` measures forward distance, not altitude, then enters `BRAKE`
+  before `LAND`.
 
 ## MAVLink Telemetry Adapter
 
@@ -162,20 +170,30 @@ webots/worlds/iris_camera.wbt
 -> TCP camera stream 127.0.0.1:5599
 -> src/drone_autonomy/perception/webots_camera.py
 -> src/drone_autonomy/perception/yolo.py
+-> src/drone_autonomy/perception/target_selector.py
 -> GateDetection
 -> MissionTelemetry.gate_detection
 ```
+
+`YoloGateDetector` extracts class-filtered raw candidates. `GateTargetSelector`
+validates geometry and hollow-gate appearance, scores candidates, tracks the
+previous target, smooths the selected bbox, and only then publishes a
+`GateDetection`.
 
 Current profile launcher:
 
 ```text
 scripts/run_iris_camera_yolo.sh
+-> AUTONOMY_PROFILE=iris-camera-yolo
+-> scripts/run_autonomy_sitl.sh
+-> configs/autonomy_runtime.env
 -> models/gate_yolov8n_best.pt
--> YOLO class id 0
+-> YOLO class name Goals-Detection and class id 3
 ```
 
-The current upstream Webots stream is `gray8`, expanded to three channels for
-YOLO. A future real-hardware path should replace only the frame source with a
+This repo's `iris_camera.wbt` profile requests `rgb24` from the vendored Webots
+controller. `gray8` is still supported only for upstream-compatible fallback
+worlds. A future real-hardware path should replace only the frame source with a
 C920/OpenCV adapter.
 
 The detector must not command the drone.
@@ -194,10 +212,50 @@ Runtime shell env example:
 configs/autonomy_runtime.env.example
 ```
 
+This file is only the git-tracked template. For real local tuning, copy it to:
+
+```text
+configs/autonomy_runtime.env
+```
+
+or pass one-shot overrides inline when launching a script.
+
 Mission tuning defaults:
 
 ```text
 GateMissionConfig in src/drone_autonomy/autonomy/mission.py
 ```
 
-Later, mission tuning should be moved to a user-editable config file before serious tuning.
+Runtime-exposed mission and clearance tuning:
+
+```text
+MISSION_CENTER_DWELL
+MISSION_CENTER_CLEARANCE_REQUIRED
+MISSION_REQUIRED_DETECTION_TICKS
+MISSION_CENTER_LOST_GRACE_TICKS
+MISSION_MAX_DETECTION_AGE
+MISSION_SEEK_YAW_RATE
+MISSION_GATE_PASS_DISTANCE
+MISSION_GATE_PASS_SPEED
+MISSION_NEXT_GATE_CLEAR_DISTANCE
+MISSION_NEXT_GATE_ACQUIRE_SPEED
+MISSION_NEXT_GATE_MIN_AREA
+MISSION_GATE_READY_AREA
+MISSION_BRAKE_SETTLE
+MISSION_BRAKE_RAMP
+MISSION_BRAKE_ALTITUDE_HOLD
+GATE_SELECTOR_MIN_APPEARANCE_SCORE
+GATE_SELECTOR_APPEARANCE_WEIGHT
+VISUAL_FRAME_WIDTH
+VISUAL_FRAME_HEIGHT
+VISUAL_MAX_ERROR_FOR_FORWARD
+VISUAL_PASS_TARGET_OFFSET_X/Y
+VISUAL_PASS_CLEARANCE_LEFT/RIGHT/UP/DOWN
+```
+
+Code-level defaults live in `src/drone_autonomy/runtime/config.py` and the
+domain config dataclasses. The tracked env example is the documented operator
+preset, not a second hidden source of truth. Actual simulation tuning should be
+done in `configs/autonomy_runtime.env` or through inline environment variables.
+`scripts/run_autonomy_sitl.sh` reads that env file and only passes values that
+are explicitly set into `src/drone_autonomy/cli.py`.

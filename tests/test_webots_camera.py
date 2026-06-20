@@ -64,6 +64,32 @@ def test_decode_payload_rejects_wrong_size() -> None:
         )
 
 
+def test_decode_rgb24_payload_preserves_channels() -> None:
+    payload = bytes(
+        [
+            255,
+            0,
+            0,
+            0,
+            255,
+            0,
+        ]
+    )
+
+    frame = decode_webots_camera_payload(
+        width_px=2,
+        height_px=1,
+        payload=payload,
+        encoding="rgb24",
+        observed_at_s=3.0,
+    )
+
+    assert frame.encoding == "rgb8"
+    assert frame.image.shape == (1, 2, 3)
+    assert frame.image[0, 0].tolist() == [255, 0, 0]
+    assert frame.image[0, 1].tolist() == [0, 255, 0]
+
+
 def test_tcp_client_keeps_partial_frame_across_timeout() -> None:
     width_px = 3
     height_px = 2
@@ -76,6 +102,7 @@ def test_tcp_client_keeps_partial_frame_across_timeout() -> None:
 
     assert client.read_latest(observed_at_s=1.0) is None
     assert fake_socket.closed is False
+    assert client.last_status.stage == "waiting_for_payload"
 
     fake_socket.append(payload[3:])
     frame = client.read_latest(observed_at_s=1.1)
@@ -84,3 +111,17 @@ def test_tcp_client_keeps_partial_frame_across_timeout() -> None:
     assert frame.width_px == width_px
     assert frame.height_px == height_px
     assert frame.image.shape == (height_px, width_px, 3)
+    assert client.last_status.stage == "frame_ready"
+
+
+def test_tcp_client_reconnects_after_idle_header_timeout() -> None:
+    fake_socket = _ChunkedSocket()
+    client = WebotsTcpCameraClient(
+        WebotsCameraConfig(read_timeout_s=0.001, idle_reconnect_s=0.002)
+    )
+    client._socket = fake_socket
+    client._last_byte_s = 0.0
+
+    assert client.read_latest(observed_at_s=1.0) is None
+    assert fake_socket.closed is True
+    assert client.last_status.stage == "header_idle_reconnect"

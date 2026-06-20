@@ -52,22 +52,49 @@ Then verify:
 python -c "from pymavlink import mavutil; print('ok')"
 ```
 
-## `No heartbeat from udp:127.0.0.1:14550`
+## `No heartbeat from udp:127.0.0.1:14551`
 
 Check these in order:
 
 1. SITL is running.
-2. SITL was launched with `--out=udp:127.0.0.1:14550`.
+2. SITL was launched with `MAVLINK_OUT_EXTRA="udp:127.0.0.1:14551"` or the
+   launcher default extra output is active.
 3. You are using the same endpoint in `drone-autonomy`.
 4. No firewall or network namespace is blocking UDP.
 
 Run:
 
 ```bash
-drone-autonomy --mode listen --connection udp:127.0.0.1:14550 --count 5
+drone-autonomy --mode listen --connection udp:127.0.0.1:14551 --count 5
 ```
 
 If no messages print, the issue is before the autonomy code.
+
+## Mission Planner disconnects while autonomy is running
+
+This is usually UDP endpoint contention, not a blocking mission loop. Mission
+Planner and the Python autonomy process should not both consume the same local
+UDP endpoint.
+
+Use one MAVLink output for Mission Planner and another for autonomy:
+
+```text
+# configs/sitl_webots.env
+MAVLINK_OUT="udp:127.0.0.1:14550"
+MAVLINK_OUT_EXTRA="udp:127.0.0.1:14551"
+```
+
+Then point this repo's autonomy runtime at the second port:
+
+```text
+# configs/autonomy_runtime.env
+MAVLINK_CONNECTION="udp:127.0.0.1:14551"
+```
+
+The `scripts/run_iris_camera_yolo.sh` profile uses `14551` unless local config
+or inline env says otherwise. If Mission Planner only reconnects after stopping
+autonomy, check whether you launched the generic runner or passed
+`MAVLINK_CONNECTION=udp:127.0.0.1:14550`.
 
 ## Runtime prints `waiting for LOCAL_POSITION_NED telemetry`
 
@@ -83,7 +110,7 @@ Check:
 Inspect raw messages:
 
 ```bash
-drone-autonomy --mode listen --connection udp:127.0.0.1:14550 --count 50
+drone-autonomy --mode listen --connection udp:127.0.0.1:14551 --count 50
 ```
 
 If `LOCAL_POSITION_NED` never appears, fix SITL/stream configuration first.
@@ -133,7 +160,7 @@ control to ArduPilot through `MAV_CMD_NAV_TAKEOFF`.
 First log the runtime phase and altitude:
 
 ```bash
-drone-autonomy --mode listen --connection udp:127.0.0.1:14550 --count 80
+drone-autonomy --mode listen --connection udp:127.0.0.1:14551 --count 80
 ```
 
 Then watch whether the transition is:
@@ -161,11 +188,13 @@ yaw_rate_rad_s > 0: yaw right/clockwise
 
 If Webots or ArduPilot behavior disagrees, fix the MAVLink command adapter before continuing.
 
-## Gate pass or final exit distance feels wrong
+## Gate pass, next-gate clear, or final exit distance feels wrong
 
 Check `COURSE_FORWARD_X` and `COURSE_FORWARD_Y`.
 
-The mission measures forward distance by projecting `LOCAL_POSITION_NED` onto the configured course direction. If course direction is wrong, gate pass distance and final forward exit distance are wrong.
+The mission measures forward distance by projecting `LOCAL_POSITION_NED` onto
+the configured course direction. If course direction is wrong, gate pass
+distance, next-gate clear distance, and final forward exit distance are wrong.
 
 ## Synthetic detector completes too easily
 
@@ -210,12 +239,14 @@ Set the model path in `configs/autonomy_runtime.env`:
 ```text
 DETECTOR="webots-yolo"
 YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best.pt"
-YOLO_GATE_CLASS_NAMES=""
-YOLO_GATE_CLASS_IDS="0"
+YOLO_GATE_CLASS_NAMES="Goals-Detection"
+YOLO_GATE_CLASS_IDS="3"
 ```
 
-The profile script `scripts/run_iris_camera_yolo.sh` sets these values by
-default.
+The profile script `scripts/run_iris_camera_yolo.sh` enforces the `webots-yolo`
+detector and diagnostics defaults, then the runner uses this model path if it is
+present. Keep custom model paths and class filters in
+`configs/autonomy_runtime.env` or inline env.
 
 ## `Ultralytics YOLO is required`
 
@@ -255,23 +286,99 @@ Check these in order:
 6. `YOLO_MODEL_PATH` points to a real `.pt` model.
 7. The model class filter matches your training labels.
 
-Bundled model class filter:
+Current model-safe class filter:
 
 ```text
-YOLO_GATE_CLASS_NAMES=""
-YOLO_GATE_CLASS_IDS="0"
+YOLO_GATE_CLASS_NAMES="Goals-Detection"
+YOLO_GATE_CLASS_IDS="3"
 ```
 
-The bundled `models/gate_yolov8n_best.pt` model reports class id `0` with class
-name `Goals-Detection`. If a future model uses a literal class name `gate`, use:
+The current `models/gate_yolov8n_best.pt` model reports class name
+`Goals-Detection`. In the current multi-class metadata, that label is id `3`;
+id `0` is not a gate.
+
+For a multi-class model, do not assume `Goals-Detection` is still id `0`. YOLO
+class ids follow the training `data.yaml` class order. For example, this order:
+
+```text
+AdvertisementBox, Dog, Forklift, Goals-Detection, Table
+```
+
+usually means:
+
+```text
+0=AdvertisementBox
+1=Dog
+2=Forklift
+3=Goals-Detection
+4=Table
+```
+
+In that case, keep both the matching name and id filters active:
+
+```bash
+YOLO_GATE_CLASS_NAMES="Goals-Detection" \
+YOLO_GATE_CLASS_IDS="3" \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+If retraining changes the numeric id but keeps the label stable, use name-only
+filtering after confirming the metadata:
+
+```bash
+YOLO_GATE_CLASS_NAMES="Goals-Detection" \
+YOLO_GATE_CLASS_IDS="" \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+If a future model uses a literal class name `gate`, use:
 
 ```text
 YOLO_GATE_CLASS_NAMES="gate"
 YOLO_GATE_CLASS_IDS=""
 ```
 
-Do not clear both filters during motion tests unless the model detects only
-gates. Otherwise the mission may center on the wrong object.
+An explicit empty `YOLO_GATE_CLASS_IDS=""` is valid only when using
+class-name-only filtering after a class-map audit.
+
+Do not clear both filters during motion tests. The runtime rejects an empty
+YOLO gate filter because otherwise the mission may center on Dog, Forklift,
+AdvertisementBox, Table, or any other non-gate object.
+
+If a Dog/Forklift/Table is drawn as `cls=3:Goals-Detection`, first inspect the
+diagnostics `raw=...` line. If it also shows `3:Goals-Detection`, the model
+itself is emitting the gate class for that object; the class filter is not able
+to reject it because the label and id already match the allowed gate class.
+Before adding more filters, confirm the realtime stream is true RGB:
+
+```text
+webots-yolo camera frame ready 640x480 encoding=rgb8
+```
+
+If the frame line says `rgb8_from_gray8`, the run is still using the old
+grayscale path and the model is being tested on a different input domain than
+normal RGB video.
+
+Only after RGB is confirmed, use `GATE_SELECTOR_MIN_APPEARANCE_SCORE` as an
+optional second guard:
+
+```bash
+GATE_SELECTOR_MIN_APPEARANCE_SCORE=0.08 \
+GATE_SELECTOR_APPEARANCE_WEIGHT=0.08 \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+The default value is `0.0`, so this guard is disabled unless you opt in. If the
+real gate is rejected with reason `appearance`, lower that threshold or disable
+it again with `GATE_SELECTOR_MIN_APPEARANCE_SCORE=0.0`. If false class-3
+detections remain common on confirmed RGB frames, the durable fix is dataset
+cleanup/retraining, not a looser class filter.
 
 If runtime prints:
 
@@ -279,8 +386,163 @@ If runtime prints:
 webots-yolo waiting for camera frame tcp://127.0.0.1:5599
 ```
 
-the camera TCP stream is not connected yet. Fix Webots world/port first before
-tuning YOLO.
+read the `status=... detail=...` suffix:
+
+- `connect_failed`: Webots is not listening on that host/port, or the controller
+  did not start.
+- `waiting_for_header`: TCP connected, but no frame header has arrived yet.
+- `waiting_for_payload`: TCP connected and a frame is partially buffered.
+- `header_idle_reconnect` or `payload_idle_reconnect`: the client stayed
+  connected but no new bytes arrived before the idle watchdog, so it closed the
+  socket and will reconnect on the next tick.
+- `stream_closed`: Webots closed the connection.
+- `decode_error` or `invalid_header`: stream format does not match
+  `WEBOTS_CAMERA_ENCODING`.
+
+Fix Webots world/port/encoding first before tuning YOLO.
+
+Run the camera-only probe:
+
+```bash
+python scripts/probe_webots_camera.py --host 127.0.0.1 --port 5599
+```
+
+Expected:
+
+```text
+camera frame ok source=tcp://127.0.0.1:5599 size=640x480 encoding=rgb8
+```
+
+If the probe succeeds but autonomy stays on `waiting_for_header`, check for a
+second client or stale autonomy process holding the single Webots camera stream:
+
+```bash
+ss -tnp | grep 5599
+```
+
+Then stop old `python`, `drone-autonomy`, or probe processes before rerunning.
+Also confirm Webots simulation is still running, not paused. If the machine is
+slow, increase the idle watchdog without changing code:
+
+```bash
+WEBOTS_CAMERA_IDLE_RECONNECT=4.0 SEND_COMMANDS=0 bash scripts/run_iris_camera_yolo.sh
+```
+
+## YOLO is slow or autonomy loop feels stuck
+
+`webots-yolo` runs camera reading and YOLO inference in background workers. The
+mission loop should not block on either task. If the vehicle still appears stuck
+in `seek_gate`, distinguish these cases:
+
+- No `webots-yolo camera frame ready ...`: camera stream is still the issue.
+- Camera is ready, but no centering: YOLO is not producing accepted gate
+  detections.
+- Detection appears and disappears: check class filter, confidence, gate
+  visibility, and `WEBOTS_DETECTION_STALE`.
+
+For a slow CPU/GPU, increase stale tolerance cautiously:
+
+```bash
+WEBOTS_DETECTION_STALE=1.5 \
+MISSION_MAX_DETECTION_AGE=1.5 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+Do not use a very large stale value during motion tests; old detections can make
+the drone center on where the gate used to be, not where it is now in the frame.
+
+## Drone oscillates while centering on a gate
+
+Current centering is intentionally conservative:
+
+- target selection prefers the nearer/larger gate instead of highest confidence
+  alone,
+- centering velocity gains and max speeds are limited,
+- centering commands are low-pass filtered through `VISUAL_COMMAND_FILTER_ALPHA`,
+- brief detection loss in `CENTER_GATE` does not immediately return to scanning,
+- runtime status prints `servo_err=(x,y)`, `area`, `aligned`, `clearance`, and
+  `pass_ready`,
+- `CENTER_GATE` must finish `MISSION_CENTER_DWELL` and clearance validation
+  before `PASS_GATE`,
+- `CENTER_GATE` also requires `MISSION_GATE_READY_AREA`, so a far centered gate
+  cannot start the committed pass sequence.
+
+Use the diagnostics window to confirm the selected target is stable:
+
+```bash
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=0 bash scripts/run_iris_camera_yolo.sh
+```
+
+If the selected box jumps between two gates, inspect the candidate scores in the
+window before tuning control gains. If the selected box is stable but motion
+still oscillates, reduce these first instead of increasing gains:
+
+```bash
+VISUAL_MAX_FORWARD_SPEED=0.20 \
+VISUAL_MAX_LATERAL_SPEED=0.16 \
+VISUAL_MAX_YAW_RATE=0.12 \
+VISUAL_COMMAND_FILTER_ALPHA=0.18 \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=1 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+If the selected box is stable but the mission never exits `CENTER_GATE`, inspect
+the magenta pass-clearance overlay and the ready-area reference box. Tune these
+values from env, not code:
+
+```bash
+VISUAL_PASS_TARGET_OFFSET_X=0.0 \
+VISUAL_PASS_TARGET_OFFSET_Y=0.0 \
+VISUAL_PASS_CLEARANCE_LEFT=0.08 \
+VISUAL_PASS_CLEARANCE_RIGHT=0.08 \
+VISUAL_PASS_CLEARANCE_UP=0.12 \
+VISUAL_PASS_CLEARANCE_DOWN=0.12 \
+MISSION_GATE_READY_AREA=0.055 \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+If gate 2 is visible but still far away, the mission should print
+`approaching gate 2 area=.../...` and keep moving forward. Tune these area
+guards if it brakes too early or too late:
+
+```bash
+MISSION_NEXT_GATE_MIN_AREA=0.015 \
+MISSION_GATE_READY_AREA=0.060 \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+## Candidate is visible but rejected by validator
+
+The OpenCV diagnostics window colors rejected candidates red and prints reason
+labels:
+
+- `confidence`: below `GATE_SELECTOR_MIN_SEEK_CONFIDENCE` or
+  `GATE_SELECTOR_MIN_TRACK_CONFIDENCE`.
+- `area_small` or `area_large`: bbox area ratio outside selector limits.
+- `aspect`: bbox width/height outside selector limits.
+- `roi`: candidate center outside the current validation ROI.
+- `appearance`: candidate crop does not look enough like a hollow gate frame.
+- `appearance_missing`: candidate did not carry image-backed appearance data.
+
+Tune validator thresholds from the shell, not by editing code:
+
+```bash
+GATE_SELECTOR_MIN_SEEK_CONFIDENCE=0.35 \
+GATE_SELECTOR_MIN_AREA_RATIO=0.001 \
+GATE_SELECTOR_MIN_APPEARANCE_SCORE=0.08 \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+If a false target is accepted, tighten the relevant threshold. If a real gate is
+red, loosen only the threshold named by the rejection reason.
 
 If the same camera stream works in the official ArduPilot example but not in a
 copied or custom map, compare the `Iris` node first. A camera stream requires
@@ -307,12 +569,26 @@ open while autonomy runs. A disconnect at process shutdown is normal.
 
 ## YOLO detections look worse than expected in Webots
 
-The upstream ArduPilot `iris_camera.wbt` stream is grayscale. The adapter expands
-gray frames to three channels before YOLO so the pipeline can run, but this is
-not true RGB validation.
+This repo's `webots/worlds/iris_camera.wbt` should request `--camera-format
+rgb24`, and `scripts/run_iris_camera_yolo.sh` should use
+`WEBOTS_CAMERA_ENCODING=rgb24`. The diagnostics frame line should therefore
+show:
 
-For final camera behavior, use a future RGB Webots stream or the real C920/OpenCV
-source while keeping the same `YoloGateDetector -> GateDetection` contract.
+```text
+frame 640x480 rgb8
+```
+
+If it shows `rgb8_from_gray8`, you are still on the old grayscale path. Check
+that Webots opened this repo's `webots/worlds/iris_camera.wbt`, that the Iris
+controller args include `--camera-format rgb24`, and that local
+`configs/autonomy_runtime.env` did not override `WEBOTS_CAMERA_ENCODING` back to
+`gray8`.
+
+If offline RGB video detects correctly but realtime Webots RGB still labels many
+objects as `3:Goals-Detection`, compare the diagnostics `raw=...` line with the
+overlay class labels. `raw=1:Dog` or `raw=2:Forklift` should be filtered out.
+`raw=3:Goals-Detection` on a non-gate means model/domain quality, not selector
+leakage.
 
 ## `scripts/run_sitl_webots.sh` says env file missing
 

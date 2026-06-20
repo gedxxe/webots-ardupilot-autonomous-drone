@@ -5,6 +5,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${REPO_ROOT}/configs/autonomy_runtime.env"
 
 CONFIG_KEYS=(
+  AUTONOMY_PROFILE
   MAVLINK_CONNECTION
   DETECTOR
   SEND_COMMANDS
@@ -15,6 +16,9 @@ CONFIG_KEYS=(
   WEBOTS_CAMERA_HOST
   WEBOTS_CAMERA_PORT
   WEBOTS_CAMERA_ENCODING
+  WEBOTS_CAMERA_IDLE_RECONNECT
+  WEBOTS_DETECTION_STALE
+  WEBOTS_DIAGNOSTICS_WINDOW
   YOLO_CONFIDENCE
   YOLO_IMGSZ
   YOLO_GATE_CLASS_NAMES
@@ -22,6 +26,58 @@ CONFIG_KEYS=(
   YOLO_DEVICE
   YOLO_MODEL_PATH
   YOLO_CONFIG_DIR
+  GATE_SELECTOR_MIN_SEEK_CONFIDENCE
+  GATE_SELECTOR_MIN_TRACK_CONFIDENCE
+  GATE_SELECTOR_MIN_AREA_RATIO
+  GATE_SELECTOR_MIN_ASPECT_RATIO
+  GATE_SELECTOR_MAX_ASPECT_RATIO
+  GATE_SELECTOR_MIN_APPEARANCE_SCORE
+  GATE_SELECTOR_APPEARANCE_WEIGHT
+  GATE_SELECTOR_STABLE_WINDOW
+  GATE_SELECTOR_REQUIRED_STABLE
+  MISSION_MAX_DETECTION_AGE
+  MISSION_REQUIRED_DETECTION_TICKS
+  MISSION_CENTER_DWELL
+  MISSION_CENTER_CLEARANCE_REQUIRED
+  MISSION_CENTER_LOST_GRACE_TICKS
+  MISSION_SEEK_YAW_RATE
+  MISSION_GATE_PASS_DISTANCE
+  MISSION_GATE_PASS_SPEED
+  MISSION_NEXT_GATE_ACQUIRE_SPEED
+  MISSION_NEXT_GATE_CLEAR_DISTANCE
+  MISSION_NEXT_GATE_MIN_AREA
+  MISSION_GATE_READY_AREA
+  MISSION_NEXT_GATE_MAX_DISTANCE
+  MISSION_NEXT_GATE_TIMEOUT
+  MISSION_BRAKE_SETTLE
+  MISSION_BRAKE_RAMP
+  MISSION_BRAKE_ALTITUDE_HOLD
+  MISSION_FINAL_EXIT_DISTANCE
+  MISSION_FINAL_EXIT_SPEED
+  VISUAL_FRAME_WIDTH
+  VISUAL_FRAME_HEIGHT
+  VISUAL_MIN_CONFIDENCE
+  VISUAL_FILTER_ALPHA
+  VISUAL_COMMAND_FILTER_ALPHA
+  VISUAL_CENTER_DEADBAND_X
+  VISUAL_CENTER_DEADBAND_Y
+  VISUAL_ALIGNED_ERROR_X
+  VISUAL_ALIGNED_ERROR_Y
+  VISUAL_PASS_TARGET_OFFSET_X
+  VISUAL_PASS_TARGET_OFFSET_Y
+  VISUAL_PASS_CLEARANCE_LEFT
+  VISUAL_PASS_CLEARANCE_RIGHT
+  VISUAL_PASS_CLEARANCE_UP
+  VISUAL_PASS_CLEARANCE_DOWN
+  VISUAL_MAX_ERROR_FOR_FORWARD
+  VISUAL_MIN_FORWARD_SPEED
+  VISUAL_MAX_FORWARD_SPEED
+  VISUAL_LATERAL_KP
+  VISUAL_VERTICAL_KP
+  VISUAL_YAW_KP
+  VISUAL_MAX_LATERAL_SPEED
+  VISUAL_MAX_VERTICAL_SPEED
+  VISUAL_MAX_YAW_RATE
   PYTHON_BIN
 )
 
@@ -57,29 +113,62 @@ fi
 
 restore_external_overrides
 
-MAVLINK_CONNECTION="${MAVLINK_CONNECTION:-udp:127.0.0.1:14550}"
-DETECTOR="${DETECTOR:-synthetic}"
-SEND_COMMANDS="${SEND_COMMANDS:-0}"
-LOOP_HZ="${LOOP_HZ:-20}"
-MAX_RUNTIME="${MAX_RUNTIME:-180}"
-COURSE_FORWARD_X="${COURSE_FORWARD_X:-1.0}"
-COURSE_FORWARD_Y="${COURSE_FORWARD_Y:-0.0}"
-WEBOTS_CAMERA_HOST="${WEBOTS_CAMERA_HOST:-127.0.0.1}"
-WEBOTS_CAMERA_PORT="${WEBOTS_CAMERA_PORT:-5599}"
-WEBOTS_CAMERA_ENCODING="${WEBOTS_CAMERA_ENCODING:-gray8}"
-YOLO_CONFIDENCE="${YOLO_CONFIDENCE:-0.35}"
-YOLO_IMGSZ="${YOLO_IMGSZ:-640}"
-YOLO_GATE_CLASS_NAMES="${YOLO_GATE_CLASS_NAMES:-}"
-YOLO_GATE_CLASS_IDS="${YOLO_GATE_CLASS_IDS:-0}"
-YOLO_DEVICE="${YOLO_DEVICE:-cpu}"
-YOLO_MODEL_PATH="${YOLO_MODEL_PATH:-}"
+BUNDLED_YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best.pt"
 
-DEFAULT_YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best.pt"
-if [[ -z "${YOLO_MODEL_PATH}" && "${DETECTOR}" == "webots-yolo" && -f "${DEFAULT_YOLO_MODEL_PATH}" ]]; then
-  YOLO_MODEL_PATH="${DEFAULT_YOLO_MODEL_PATH}"
+apply_profile_defaults() {
+  case "${AUTONOMY_PROFILE:-}" in
+    "")
+      ;;
+    "iris-camera-yolo")
+      # Profile values are applied after the local env file is loaded. Inline
+      # env still wins, but stale local DETECTOR/diagnostics values cannot make
+      # this profile silently stop using the iris camera YOLO path.
+      if [[ "${EXTERNAL_DETECTOR_SET:-}" != "1" ]]; then
+        DETECTOR="webots-yolo"
+      fi
+      if [[ "${EXTERNAL_WEBOTS_DIAGNOSTICS_WINDOW_SET:-}" != "1" ]]; then
+        WEBOTS_DIAGNOSTICS_WINDOW="1"
+      fi
+      if [[ -z "${MAVLINK_CONNECTION:-}" ]]; then
+        MAVLINK_CONNECTION="udp:127.0.0.1:14551"
+      fi
+      if [[ -z "${WEBOTS_CAMERA_ENCODING:-}" ]]; then
+        WEBOTS_CAMERA_ENCODING="rgb24"
+      fi
+      if [[ -z "${SEND_COMMANDS:-}" ]]; then
+        SEND_COMMANDS="0"
+      fi
+      ;;
+    *)
+      echo "Unknown AUTONOMY_PROFILE='${AUTONOMY_PROFILE}'" >&2
+      exit 2
+      ;;
+  esac
+}
+
+append_arg_if_set() {
+  local option="$1"
+  local key="$2"
+  if [[ -v ${key} ]]; then
+    cmd+=("${option}" "${!key}")
+  fi
+}
+
+append_arg_if_nonempty() {
+  local option="$1"
+  local key="$2"
+  if [[ -n "${!key:-}" ]]; then
+    cmd+=("${option}" "${!key}")
+  fi
+}
+
+apply_profile_defaults
+
+if [[ -z "${YOLO_MODEL_PATH:-}" && "${DETECTOR:-}" == "webots-yolo" && -f "${BUNDLED_YOLO_MODEL_PATH}" ]]; then
+  YOLO_MODEL_PATH="${BUNDLED_YOLO_MODEL_PATH}"
 fi
 
-if [[ "${DETECTOR}" == "webots-yolo" ]]; then
+if [[ "${DETECTOR:-}" == "webots-yolo" ]]; then
   export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-${REPO_ROOT}/.tmp_ultralytics}"
   mkdir -p "${YOLO_CONFIG_DIR}"
 fi
@@ -150,30 +239,86 @@ resolve_autonomy_launcher
 cmd=(
   "${autonomy_launcher[@]}"
   --mode autonomy
-  --connection "${MAVLINK_CONNECTION}"
-  --detector "${DETECTOR}"
-  --loop-hz "${LOOP_HZ}"
-  --max-runtime "${MAX_RUNTIME}"
-  --course-forward-x "${COURSE_FORWARD_X}"
-  --course-forward-y "${COURSE_FORWARD_Y}"
-  --webots-camera-host "${WEBOTS_CAMERA_HOST}"
-  --webots-camera-port "${WEBOTS_CAMERA_PORT}"
-  --webots-camera-encoding "${WEBOTS_CAMERA_ENCODING}"
-  --yolo-confidence "${YOLO_CONFIDENCE}"
-  --yolo-imgsz "${YOLO_IMGSZ}"
-  --gate-class-names "${YOLO_GATE_CLASS_NAMES}"
-  --gate-class-ids "${YOLO_GATE_CLASS_IDS}"
 )
 
-if [[ -n "${YOLO_MODEL_PATH:-}" ]]; then
-  cmd+=(--yolo-model "${YOLO_MODEL_PATH}")
+append_arg_if_nonempty --connection MAVLINK_CONNECTION
+append_arg_if_nonempty --detector DETECTOR
+append_arg_if_nonempty --loop-hz LOOP_HZ
+append_arg_if_nonempty --max-runtime MAX_RUNTIME
+append_arg_if_nonempty --course-forward-x COURSE_FORWARD_X
+append_arg_if_nonempty --course-forward-y COURSE_FORWARD_Y
+append_arg_if_nonempty --webots-camera-host WEBOTS_CAMERA_HOST
+append_arg_if_nonempty --webots-camera-port WEBOTS_CAMERA_PORT
+append_arg_if_nonempty --webots-camera-encoding WEBOTS_CAMERA_ENCODING
+append_arg_if_nonempty --webots-camera-idle-reconnect WEBOTS_CAMERA_IDLE_RECONNECT
+append_arg_if_nonempty --webots-detection-stale WEBOTS_DETECTION_STALE
+append_arg_if_nonempty --yolo-model YOLO_MODEL_PATH
+append_arg_if_nonempty --yolo-confidence YOLO_CONFIDENCE
+append_arg_if_nonempty --yolo-imgsz YOLO_IMGSZ
+append_arg_if_set --gate-class-names YOLO_GATE_CLASS_NAMES
+append_arg_if_set --gate-class-ids YOLO_GATE_CLASS_IDS
+append_arg_if_nonempty --yolo-device YOLO_DEVICE
+append_arg_if_nonempty --gate-selector-min-seek-confidence GATE_SELECTOR_MIN_SEEK_CONFIDENCE
+append_arg_if_nonempty --gate-selector-min-track-confidence GATE_SELECTOR_MIN_TRACK_CONFIDENCE
+append_arg_if_nonempty --gate-selector-min-area-ratio GATE_SELECTOR_MIN_AREA_RATIO
+append_arg_if_nonempty --gate-selector-min-aspect-ratio GATE_SELECTOR_MIN_ASPECT_RATIO
+append_arg_if_nonempty --gate-selector-max-aspect-ratio GATE_SELECTOR_MAX_ASPECT_RATIO
+append_arg_if_nonempty --gate-selector-min-appearance-score GATE_SELECTOR_MIN_APPEARANCE_SCORE
+append_arg_if_nonempty --gate-selector-appearance-weight GATE_SELECTOR_APPEARANCE_WEIGHT
+append_arg_if_nonempty --gate-selector-stable-window GATE_SELECTOR_STABLE_WINDOW
+append_arg_if_nonempty --gate-selector-required-stable GATE_SELECTOR_REQUIRED_STABLE
+append_arg_if_nonempty --mission-max-detection-age MISSION_MAX_DETECTION_AGE
+append_arg_if_nonempty --mission-required-detection-ticks MISSION_REQUIRED_DETECTION_TICKS
+append_arg_if_nonempty --mission-center-dwell MISSION_CENTER_DWELL
+append_arg_if_nonempty --mission-center-clearance-required MISSION_CENTER_CLEARANCE_REQUIRED
+append_arg_if_nonempty --mission-center-lost-grace-ticks MISSION_CENTER_LOST_GRACE_TICKS
+append_arg_if_nonempty --mission-seek-yaw-rate MISSION_SEEK_YAW_RATE
+append_arg_if_nonempty --mission-gate-pass-distance MISSION_GATE_PASS_DISTANCE
+append_arg_if_nonempty --mission-gate-pass-speed MISSION_GATE_PASS_SPEED
+append_arg_if_nonempty --mission-next-gate-acquire-speed MISSION_NEXT_GATE_ACQUIRE_SPEED
+append_arg_if_nonempty --mission-next-gate-clear-distance MISSION_NEXT_GATE_CLEAR_DISTANCE
+append_arg_if_nonempty --mission-next-gate-min-area MISSION_NEXT_GATE_MIN_AREA
+append_arg_if_nonempty --mission-gate-ready-area MISSION_GATE_READY_AREA
+append_arg_if_nonempty --mission-next-gate-max-distance MISSION_NEXT_GATE_MAX_DISTANCE
+append_arg_if_nonempty --mission-next-gate-timeout MISSION_NEXT_GATE_TIMEOUT
+append_arg_if_nonempty --mission-brake-settle MISSION_BRAKE_SETTLE
+append_arg_if_nonempty --mission-brake-ramp MISSION_BRAKE_RAMP
+append_arg_if_nonempty --mission-final-exit-distance MISSION_FINAL_EXIT_DISTANCE
+append_arg_if_nonempty --mission-final-exit-speed MISSION_FINAL_EXIT_SPEED
+append_arg_if_nonempty --visual-frame-width VISUAL_FRAME_WIDTH
+append_arg_if_nonempty --visual-frame-height VISUAL_FRAME_HEIGHT
+append_arg_if_nonempty --visual-min-confidence VISUAL_MIN_CONFIDENCE
+append_arg_if_nonempty --visual-filter-alpha VISUAL_FILTER_ALPHA
+append_arg_if_nonempty --visual-command-filter-alpha VISUAL_COMMAND_FILTER_ALPHA
+append_arg_if_nonempty --visual-center-deadband-x VISUAL_CENTER_DEADBAND_X
+append_arg_if_nonempty --visual-center-deadband-y VISUAL_CENTER_DEADBAND_Y
+append_arg_if_nonempty --visual-aligned-error-x VISUAL_ALIGNED_ERROR_X
+append_arg_if_nonempty --visual-aligned-error-y VISUAL_ALIGNED_ERROR_Y
+append_arg_if_nonempty --visual-pass-target-offset-x VISUAL_PASS_TARGET_OFFSET_X
+append_arg_if_nonempty --visual-pass-target-offset-y VISUAL_PASS_TARGET_OFFSET_Y
+append_arg_if_nonempty --visual-pass-clearance-left VISUAL_PASS_CLEARANCE_LEFT
+append_arg_if_nonempty --visual-pass-clearance-right VISUAL_PASS_CLEARANCE_RIGHT
+append_arg_if_nonempty --visual-pass-clearance-up VISUAL_PASS_CLEARANCE_UP
+append_arg_if_nonempty --visual-pass-clearance-down VISUAL_PASS_CLEARANCE_DOWN
+append_arg_if_nonempty --visual-max-error-for-forward VISUAL_MAX_ERROR_FOR_FORWARD
+append_arg_if_nonempty --visual-min-forward-speed VISUAL_MIN_FORWARD_SPEED
+append_arg_if_nonempty --visual-max-forward-speed VISUAL_MAX_FORWARD_SPEED
+append_arg_if_nonempty --visual-lateral-kp VISUAL_LATERAL_KP
+append_arg_if_nonempty --visual-vertical-kp VISUAL_VERTICAL_KP
+append_arg_if_nonempty --visual-yaw-kp VISUAL_YAW_KP
+append_arg_if_nonempty --visual-max-lateral-speed VISUAL_MAX_LATERAL_SPEED
+append_arg_if_nonempty --visual-max-vertical-speed VISUAL_MAX_VERTICAL_SPEED
+append_arg_if_nonempty --visual-max-yaw-rate VISUAL_MAX_YAW_RATE
+
+if [[ "${WEBOTS_DIAGNOSTICS_WINDOW:-0}" == "1" ]]; then
+  cmd+=(--webots-diagnostics-window)
 fi
 
-if [[ -n "${YOLO_DEVICE}" ]]; then
-  cmd+=(--yolo-device "${YOLO_DEVICE}")
+if [[ "${MISSION_BRAKE_ALTITUDE_HOLD:-0}" == "1" ]]; then
+  cmd+=(--mission-brake-altitude-hold)
 fi
 
-if [[ "${SEND_COMMANDS}" == "1" ]]; then
+if [[ "${SEND_COMMANDS:-0}" == "1" ]]; then
   cmd+=(--send-commands)
 else
   echo "SEND_COMMANDS=0: running dry-run only; no MAVLink motion commands will be sent." >&2

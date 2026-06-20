@@ -23,7 +23,6 @@ def test_centered_gate_moves_forward_without_lateral_correction() -> None:
         VisualServoConfig(
             frame_width_px=100,
             frame_height_px=100,
-            target_area_ratio=0.05,
             filter_alpha=1.0,
         )
     )

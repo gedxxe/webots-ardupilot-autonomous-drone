@@ -3,7 +3,7 @@
 PROTO RobotstadiumGoal [
   field SFVec3f    translation 0 0 0
   field SFRotation rotation    0 0 1 0
-  field SFString   name        "robotstadium goal"
+  field SFString   name        "drone navigation gate"
   field SFFloat    postRadius  0.05
   field SFColor    frameColor  1 1 1
 ]
@@ -11,164 +11,220 @@ PROTO RobotstadiumGoal [
 Solid {
   translation IS translation
   rotation IS rotation
+
   children [
-    DEF HORIZONTAL_POST_TRANS Pose {
-      translation 0 0 0.85
-      rotation 1 0 0 -1.570793
+    # ============================================================
+    # Drone navigation gate
+    #
+    # Fixed dimensions:
+    #   width  = 3.0 m
+    #   height = 2.0 m
+    #   depth  = 0.8 m
+    #
+    # Coordinate:
+    #   X = depth
+    #   Y = width
+    #   Z = height
+    # ============================================================
+
+    # Front top crossbar
+    DEF FRONT_CROSSBAR Pose {
+      translation 0 0 2.0
+      rotation 1 0 0 -1.570796
       children [
         Shape {
           appearance DEF POST_APP PBRAppearance {
             baseColor IS frameColor
             metalness 0
-            roughness 0.2
+            roughness 0.25
           }
           geometry Capsule {
-            height 1.6
+            height 3.0
             radius IS postRadius
           }
         }
       ]
     }
 
-    DEF RIGHT_POST_TRANS Pose {
-      translation 0 0.8 0.425
+    # Front left vertical post
+    DEF FRONT_LEFT_POST Pose {
+      translation 0 -1.5 1.0
       children [
         Shape {
           appearance USE POST_APP
           geometry Cylinder {
             bottom FALSE
             top FALSE
-            height 0.85
+            height 2.0
             radius IS postRadius
           }
         }
       ]
     }
 
-    DEF LEFT_POST_TRANS Pose {
-      translation 0 -0.8 0.425
+    # Front right vertical post
+    DEF FRONT_RIGHT_POST Pose {
+      translation 0 1.5 1.0
       children [
         Shape {
           appearance USE POST_APP
           geometry Cylinder {
             bottom FALSE
             top FALSE
-            height 0.85
+            height 2.0
             radius IS postRadius
           }
         }
       ]
     }
 
-    Pose {
-      translation 0.5 0 0.85
-      rotation 1 0 0 -1.570793
+    # Rear top crossbar
+    DEF REAR_CROSSBAR Pose {
+      translation 0.8 0 2.0
+      rotation 1 0 0 -1.570796
       children [
-        DEF SMALL_HORIZONTAL_POST_SHAPE Shape {
+        Shape {
           appearance USE POST_APP
           geometry Capsule {
-            height 1.6
-            radius 0.014
+            height 3.0
+            radius 0.025
           }
         }
       ]
     }
 
-    Pose {
-      translation 0.5 0 0
-      rotation 1 0 0 -1.5708
+    # Rear bottom crossbar
+    DEF REAR_BOTTOM_BAR Pose {
+      translation 0.8 0 0
+      rotation 1 0 0 -1.570796
       children [
-        USE SMALL_HORIZONTAL_POST_SHAPE
+        Shape {
+          appearance USE POST_APP
+          geometry Capsule {
+            height 3.0
+            radius 0.025
+          }
+        }
       ]
     }
 
-    Pose {
-      translation 0.5 -0.8 0.425
+    # Rear left vertical post
+    DEF REAR_LEFT_POST Pose {
+      translation 0.8 -1.5 1.0
       children [
-        DEF SMALL_POST_SHAPE Shape {
+        Shape {
           appearance USE POST_APP
           geometry Cylinder {
             bottom FALSE
             top FALSE
-            height 0.85
-            radius 0.014
+            height 2.0
+            radius 0.025
           }
         }
       ]
     }
 
-    Pose {
-      translation 0.5 0.8 0.425
+    # Rear right vertical post
+    DEF REAR_RIGHT_POST Pose {
+      translation 0.8 1.5 1.0
       children [
-        USE SMALL_POST_SHAPE
-      ]
-    }
-
-    Pose {
-      translation 0.25 -0.8 0.85
-      rotation 0.577351 0.577349 0.577351 2.094397
-      children [
-        DEF OTHER_SMALL_POST_SHAPE Shape {
+        Shape {
           appearance USE POST_APP
           geometry Cylinder {
             bottom FALSE
             top FALSE
-            height 0.5
-            radius 0.014
+            height 2.0
+            radius 0.025
           }
         }
       ]
     }
 
-    Pose {
-      translation 0.25 0.8 0.85
-      rotation 0.577351 0.577349 0.577351 2.094397
+    # Top left depth connector
+    DEF TOP_LEFT_DEPTH_BAR Pose {
+      translation 0.4 -1.5 2.0
+      rotation 0 1 0 1.570796
       children [
-        USE OTHER_SMALL_POST_SHAPE
+        Shape {
+          appearance USE POST_APP
+          geometry Cylinder {
+            bottom FALSE
+            top FALSE
+            height 0.8
+            radius 0.025
+          }
+        }
       ]
     }
 
-    Pose {
-      translation 0.25 -0.8 0
-      rotation 0.577351 0.577349 0.577351 2.094397
+    # Top right depth connector
+    DEF TOP_RIGHT_DEPTH_BAR Pose {
+      translation 0.4 1.5 2.0
+      rotation 0 1 0 1.570796
       children [
-        USE OTHER_SMALL_POST_SHAPE
+        Shape {
+          appearance USE POST_APP
+          geometry Cylinder {
+            bottom FALSE
+            top FALSE
+            height 0.8
+            radius 0.025
+          }
+        }
       ]
     }
 
-    Pose {
-      translation 0.25 0.8 0
-      rotation 0.577351 0.577349 0.577351 2.094397
+    # Bottom left depth connector
+    DEF BOTTOM_LEFT_DEPTH_BAR Pose {
+      translation 0.4 -1.5 0
+      rotation 0 1 0 1.570796
       children [
-        USE OTHER_SMALL_POST_SHAPE
+        Shape {
+          appearance USE POST_APP
+          geometry Cylinder {
+            bottom FALSE
+            top FALSE
+            height 0.8
+            radius 0.025
+          }
+        }
+      ]
+    }
+
+    # Bottom right depth connector
+    DEF BOTTOM_RIGHT_DEPTH_BAR Pose {
+      translation 0.4 1.5 0
+      rotation 0 1 0 1.570796
+      children [
+        Shape {
+          appearance USE POST_APP
+          geometry Cylinder {
+            bottom FALSE
+            top FALSE
+            height 0.8
+            radius 0.025
+          }
+        }
       ]
     }
   ]
 
   name IS name
-  model "robotstadium goal"
+  model "drone navigation gate"
 
   boundingObject Group {
     children [
-      USE HORIZONTAL_POST_TRANS
-      USE RIGHT_POST_TRANS
-      USE LEFT_POST_TRANS
-
-      Pose {
-        translation 0.275 0.8 0.425
-        children [
-          DEF GOAL_SIDE_BOX Box {
-            size 0.45 0.04 0.85
-          }
-        ]
-      }
-
-      Pose {
-        translation 0.275 -0.8 0.425
-        children [
-          USE GOAL_SIDE_BOX
-        ]
-      }
+      USE FRONT_CROSSBAR
+      USE FRONT_LEFT_POST
+      USE FRONT_RIGHT_POST
+      USE REAR_CROSSBAR
+      USE REAR_BOTTOM_BAR
+      USE REAR_LEFT_POST
+      USE REAR_RIGHT_POST
+      USE TOP_LEFT_DEPTH_BAR
+      USE TOP_RIGHT_DEPTH_BAR
+      USE BOTTOM_LEFT_DEPTH_BAR
+      USE BOTTOM_RIGHT_DEPTH_BAR
     ]
   }
 

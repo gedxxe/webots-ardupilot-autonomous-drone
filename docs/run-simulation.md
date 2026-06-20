@@ -1,167 +1,35 @@
 # Simulation Runbook
 
-Runbook ini menjelaskan cara menjalankan kode simulasi dari nol sampai autonomy loop tersambung ke ArduPilot SITL.
+Runbook ini fokus ke workflow yang dipakai sekarang: Webots `iris_camera.wbt`,
+ArduPilot SITL, YOLO gate detector, dan OpenCV diagnostics window.
 
-Status saat ini:
+## Terminal Layout
 
-- Webots baseline world sudah tersedia dari vendored ArduPilot Webots example.
-- Webots TCP camera adapter sudah tersedia untuk `iris_camera.wbt`.
-- YOLO wrapper sudah tersedia dan model gate ada di
-  `models/gate_yolov8n_best.pt`.
-- Runtime tetap bisa diuji dengan ArduPilot Webots example dan synthetic gate detector.
+Gunakan empat terminal. Mission Planner opsional, tapi berguna untuk monitoring.
 
-Baseline rule:
-
-- This repo now contains a full vendored copy of ArduPilot's Webots Python
-  example in `webots/`.
-- For current gate YOLO simulation, open `webots/worlds/iris_camera.wbt`.
-- For camera-free baseline testing only, open `webots/worlds/iris.wbt`.
-- Do not replace it with partial copies. Partial copies can make the Iris
-  vehicle disappear because `.wbt`, `.proto`, meshes, textures, controllers,
-  scripts, and params reference each other.
-
-Synthetic detector hanya untuk membuktikan wiring `MAVLink -> telemetry -> mission -> command`. Jangan pakai synthetic detector untuk menilai performa gate detection.
-
-## Mental Model
-
-Ada tiga proses yang berjalan terpisah:
-
-```text
-Terminal A: Webots GUI
-Terminal B: ArduPilot SITL
-Terminal C: Python autonomy runtime
-```
-
-Aliran datanya:
-
-```text
-Webots physics
-  -> ArduPilot SITL
-  -> MAVLink UDP 127.0.0.1:14550
-  -> drone-autonomy runtime
-  -> optional MAVLink guided commands back to ArduPilot
-```
-
-## Before You Start
-
-Pastikan:
-
-- Ubuntu 24.04 environment tersedia untuk Webots dan ArduPilot SITL.
-- Webots bisa dibuka.
-- ArduPilot sudah cloned di luar repo ini, default `~/ardupilot`.
-- ArduPilot submodules sudah initialized.
-- `./waf configure --board sitl` dan `./waf copter` sudah sukses.
-- Python environment repo ini sudah install dependencies.
-- `configs/sitl_webots.env` sudah dibuat dari example.
-
-Expected folder layout when using your DATA partition:
-
-```text
-/media/gedxxe/DATA/ardupilot
-/media/gedxxe/DATA/venv-ardupilot
-/media/gedxxe/DATA/WeBots_Ardupilot
-```
-
-This repo does not need to live inside the ArduPilot checkout. ArduPilot stays
-external, while this repo owns the companion autonomy code and vendored Webots
-baseline assets.
-
-Install repo dependencies:
+### Terminal 1: Mission Planner
 
 ```bash
-cd /media/gedxxe/DATA/WeBots_Ardupilot
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e ".[dev]"
+cd /media/gedxxe/DATA/WeBots_Ardupilot/MissionPlanner
+mono MissionPlanner.exe
 ```
 
-Install vision dependencies only when testing `--detector webots-yolo`:
+Mission Planner memakai MAVLink `udp:127.0.0.1:14550`.
 
-```bash
-pip install -e ".[dev,vision]"
-```
-
-Create simulator env:
-
-```bash
-cp configs/sitl_webots.env.example configs/sitl_webots.env
-nano configs/sitl_webots.env
-```
-
-Minimal isi yang harus benar:
-
-```text
-ARDUPILOT_HOME="<absolute path to your ArduPilot checkout>"
-WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
-MAVLINK_OUT="udp:127.0.0.1:14550"
-```
-
-Leave `WEBOTS_EXAMPLE_RELATIVE` commented unless you intentionally want to use
-the Webots example directly from the ArduPilot checkout instead of this repo's
-vendored `webots/` tree.
-
-Examples:
-
-```text
-# Native Ubuntu home install
-ARDUPILOT_HOME="$HOME/ardupilot"
-
-# DATA partition mounted by Ubuntu
-ARDUPILOT_HOME="/media/gedxxe/DATA/ardupilot"
-
-# WSL-style mount
-ARDUPILOT_HOME="/mnt/d/ardupilot"
-```
-
-Do not point `WEBOTS_EXAMPLE_HOME` to a half-copied Webots folder. The current
-gate-perception profile uses the camera world from this repo:
-
-```text
-WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
-WEBOTS_WORLD="worlds/iris_camera.wbt"
-WEBOTS_PARAM_FILE="params/iris.parm"
-```
-
-## Step 1: Open Webots
-
-Terminal A:
+### Terminal 2: Webots
 
 ```bash
 cd /media/gedxxe/DATA/WeBots_Ardupilot
 webots webots/worlds/iris_camera.wbt
 ```
 
-Alternative if you prefer opening from the Webots GUI:
-
-```text
-<repo>/webots/worlds/iris_camera.wbt
-```
-
-Press Run in Webots.
-
 Expected:
 
-- Webots GUI terbuka.
-- World `iris_camera.wbt` loaded.
-- Iris model appears in the world.
-- Simulation is running.
-- Webots console eventually shows the camera stream on port `5599`.
+- Iris muncul di world.
+- World memakai `Camera { name "camera" ... }`.
+- Webots console menunjukkan camera stream di port `5599`.
 
-Camera stream wiring that must exist in `iris_camera.wbt`:
-
-```text
-controllerArgs: --camera camera --camera-port 5599
-extensionSlot: Camera { name "camera" ... }
-```
-
-If the stream line does not appear, check this world wiring before debugging
-YOLO. The autonomy runtime cannot read frames until Webots starts the TCP
-camera stream.
-
-## Step 2: Start ArduPilot SITL
-
-Terminal B:
+### Terminal 3: ArduPilot SITL
 
 ```bash
 cd /media/gedxxe/DATA/WeBots_Ardupilot
@@ -169,304 +37,264 @@ source .venv/bin/activate
 scripts/run_sitl_webots.sh
 ```
 
-If the DATA partition is mounted with `noexec`, run the script through Bash:
-
-```bash
-bash scripts/run_sitl_webots.sh
-```
-
 Expected:
 
-- MAVProxy starts.
-- SITL boots ArduCopter.
-- Webots console eventually reports connection to ArduPilot SITL.
-- MAVLink output is available on `udp:127.0.0.1:14550`.
+- SITL boot ArduCopter.
+- Webots connect ke SITL.
+- MAVLink tersedia di `14550` untuk Mission Planner dan `14551` untuk autonomy.
 
-Do not continue until SITL is alive.
+### Terminal 4: YOLO Autonomy
 
-## Step 3: Check MAVLink Heartbeat
-
-Terminal C:
+Dry-run dulu. Diagnostics window default aktif untuk script ini, tapi env tetap
+ditulis eksplisit supaya tidak ambigu.
 
 ```bash
 cd /media/gedxxe/DATA/WeBots_Ardupilot
 source .venv/bin/activate
-drone-autonomy --mode heartbeat --connection udp:127.0.0.1:14550
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=0 bash scripts/run_iris_camera_yolo.sh
 ```
 
-Expected output shape:
-
-```text
-heartbeat system=... component=... type=... autopilot=...
-```
-
-If this fails, fix MAVLink connection before testing autonomy.
-
-## Step 4: Dry-Run Autonomy
-
-Dry-run reads telemetry and runs mission decisions, but sends no movement command.
-
-Terminal C:
+Kalau visual target sudah benar dan hanya di SITL:
 
 ```bash
-drone-autonomy \
-  --mode autonomy \
-  --connection udp:127.0.0.1:14550 \
-  --detector synthetic
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=1 bash scripts/run_iris_camera_yolo.sh
 ```
 
-Expected output shape:
+## Required Setup
 
-```text
-autonomy connection=udp:127.0.0.1:14550 detector=synthetic command_mode=dry-run loop_hz=20.0
-dry-run phase=init gate=1 cmd=set_mode detail=waiting for guided mode
-```
-
-Important:
-
-- Dry-run is for wiring visibility.
-- It will not arm, take off, or move the vehicle.
-- If SITL is still not in `GUIDED` and armed, the mission will stay around `SET_MODE` or `ARM` decisions because commands are not actually sent.
-
-## Step 5: Commanded Synthetic Motion Test
-
-Only run this in SITL. Do not run this on real hardware.
-
-Terminal C:
+Install dependencies once:
 
 ```bash
-drone-autonomy \
-  --mode autonomy \
-  --connection udp:127.0.0.1:14550 \
-  --detector synthetic \
-  --send-commands
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e ".[dev,vision]"
 ```
 
-Expected phase progression:
+Create SITL config once:
+
+```bash
+cp configs/sitl_webots.env.example configs/sitl_webots.env
+nano configs/sitl_webots.env
+```
+
+Minimum values:
 
 ```text
-sent phase=init ... cmd=set_mode
-sent phase=init ... cmd=arm
-sent phase=takeoff ... cmd=takeoff
-sent phase=seek_gate ... cmd=body_velocity
-sent phase=center_gate ... cmd=body_velocity
-sent phase=pass_gate ... cmd=body_velocity
-sent phase=next_gate_acquire ... cmd=body_velocity
-sent phase=brake ... cmd=body_velocity
-sent phase=center_gate ... cmd=body_velocity
-sent phase=pass_gate ... cmd=body_velocity
-sent phase=final_exit ... cmd=body_velocity
-sent phase=land ... cmd=land
+ARDUPILOT_HOME="/media/gedxxe/DATA/ardupilot"
+WEBOTS_EXAMPLE_HOME="${REPO_ROOT}/webots"
+WEBOTS_WORLD="worlds/iris_camera.wbt"
+WEBOTS_PARAM_FILE="params/iris.parm"
+MAVLINK_OUT="udp:127.0.0.1:14550"
+MAVLINK_OUT_EXTRA="udp:127.0.0.1:14551"
 ```
 
-The exact timing depends on SITL position updates and vehicle response.
-
-Takeoff is intentionally delegated to ArduPilot:
-
-- `cmd=takeoff` targets the mission altitude, `1.0 m`.
-- The mission does not send body-z velocity during TAKEOFF.
-- It waits for `+/-0.06 m` settle tolerance over `8` non-landed ticks before
-  entering `seek_gate`.
-
-## Step 6: Script-Based Run
-
-Create runtime config:
+Create local autonomy config only when you want persistent tuning:
 
 ```bash
 cp configs/autonomy_runtime.env.example configs/autonomy_runtime.env
 nano configs/autonomy_runtime.env
 ```
 
-Dry-run:
+Do not tune `configs/autonomy_runtime.env.example` directly. It is the tracked
+template.
 
-```bash
-scripts/run_autonomy_sitl.sh
-```
+## Runtime Precedence
 
-The script prefers running `python -m drone_autonomy.cli` from this repo's
-`src/` tree. This avoids accidentally launching a stale `drone-autonomy`
-console script from `PATH`. Make sure the selected Python environment still has
-`pymavlink` installed through:
-
-```bash
-pip install -e ".[dev]"
-```
-
-If you previously saw this error:
+Untuk autonomy runtime, urutan nilai yang dipakai adalah:
 
 ```text
-scripts/run_autonomy_sitl.sh: line 37: exec: drone-autonomy: not found
+inline env before command
+-> iris-camera-yolo profile-owned defaults
+-> configs/autonomy_runtime.env
+-> Python runtime defaults in src/drone_autonomy/runtime/config.py
 ```
 
-pull the latest launcher fix and retry from an activated Python environment:
+`scripts/run_iris_camera_yolo.sh` hanya memilih profile
+`AUTONOMY_PROFILE="iris-camera-yolo"`. Profile ini mengunci hal yang memang
+milik workflow iris-camera, yaitu `DETECTOR="webots-yolo"` dan diagnostics
+default aktif. Nilai eksperimen seperti model path, class filter, area
+threshold, clearance, speed, dan gain tetap diatur dari
+`configs/autonomy_runtime.env` atau inline env.
+
+Contoh inline env tetap menang:
 
 ```bash
-cd /media/gedxxe/DATA/WeBots_Ardupilot
-git pull
-source .venv/bin/activate
-pip install -e ".[dev]"
-scripts/run_autonomy_sitl.sh
+YOLO_GATE_CLASS_IDS="" SEND_COMMANDS=0 bash scripts/run_iris_camera_yolo.sh
 ```
 
-If you reuse the ArduPilot virtualenv instead of this repo's `.venv`, set this
-in `configs/autonomy_runtime.env`:
+## Current YOLO Profile
+
+`scripts/run_iris_camera_yolo.sh` selects the current profile:
 
 ```text
-PYTHON_BIN="/media/gedxxe/DATA/venv-ardupilot/bin/python"
+AUTONOMY_PROFILE="iris-camera-yolo"
+DETECTOR="webots-yolo"                 # profile-owned unless set inline
+WEBOTS_DIAGNOSTICS_WINDOW="1"          # profile-owned unless set inline
+MAVLINK_CONNECTION="udp:127.0.0.1:14551"
+YOLO_MODEL_PATH="models/gate_yolov8n_best.pt"
+YOLO_GATE_CLASS_NAMES="Goals-Detection"
+YOLO_GATE_CLASS_IDS="3"
 ```
 
-Commanded SITL motion:
+`MAVLINK_CONNECTION`, `YOLO_MODEL_PATH`, and the class filters are still normal
+tuning/config values. Keep them in `configs/autonomy_runtime.env` unless you are
+doing a one-shot inline test.
 
-```bash
-SEND_COMMANDS=1 scripts/run_autonomy_sitl.sh
-```
-
-Or edit:
+Verified current model metadata:
 
 ```text
-SEND_COMMANDS="1"
+0=AdvertisementBox
+1=Dog
+2=Forklift
+3=Goals-Detection
+4=Table
 ```
 
-inside `configs/autonomy_runtime.env`.
-
-Inline environment variables override `configs/autonomy_runtime.env`, so this is
-the safest one-shot commanded synthetic test:
-
-```bash
-SEND_COMMANDS=1 DETECTOR=synthetic scripts/run_autonomy_sitl.sh
-```
-
-If the script still looks different from the direct `drone-autonomy ...
---detector synthetic --send-commands` command, check whether
-`configs/autonomy_runtime.env` has an unexpected `PYTHON_BIN`.
-
-## Step 7: Webots Camera Plus YOLO Dry-Run
-
-This mode uses real frames from `iris_camera.wbt` and converts YOLO output into
-`GateDetection`. It still sends no movement command unless `SEND_COMMANDS=1`.
-
-Terminal A:
-
-```bash
-cd /media/gedxxe/DATA/WeBots_Ardupilot
-webots webots/worlds/iris_camera.wbt
-```
-
-Expected Webots console clue:
+Dog/Forklift/Table must not become targets. If startup does not print this
+filter, stop and fix config before enabling `SEND_COMMANDS=1`:
 
 ```text
-Camera stream started at 127.0.0.1:5599
+webots-yolo class_filter names=Goals-Detection ids=3
 ```
 
-In `configs/sitl_webots.env`, use:
+## Main Tunables
+
+Tune these in `configs/autonomy_runtime.env` or inline before the bash command.
+For the technical meaning and safe tuning order, read `docs/tuning-guide.md`.
+
+Detection and target selection:
 
 ```text
-WEBOTS_WORLD="worlds/iris_camera.wbt"
-WEBOTS_PARAM_FILE="params/iris.parm"
+YOLO_CONFIDENCE
+GATE_SELECTOR_MIN_SEEK_CONFIDENCE
+GATE_SELECTOR_MIN_TRACK_CONFIDENCE
+GATE_SELECTOR_MIN_AREA_RATIO
+GATE_SELECTOR_STABLE_WINDOW
+GATE_SELECTOR_REQUIRED_STABLE
+WEBOTS_DETECTION_STALE
 ```
 
-Install vision dependencies:
+`GATE_SELECTOR_MIN_APPEARANCE_SCORE` and
+`GATE_SELECTOR_APPEARANCE_WEIGHT` are optional guards, disabled by default. Do
+not use them to hide a camera/config mismatch. First confirm diagnostics show
+`frame 640x480 rgb8` and that the `raw=...` line says the model itself is
+emitting `3:Goals-Detection` for the false object.
 
-```bash
-source .venv/bin/activate
-pip install -e ".[dev,vision]"
-```
-
-In `configs/autonomy_runtime.env`, use:
+Gate pass and gate-2 acquire:
 
 ```text
-DETECTOR="webots-yolo"
-YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best.pt"
-YOLO_GATE_CLASS_NAMES=""
-YOLO_GATE_CLASS_IDS="0"
-YOLO_CONFIG_DIR="${REPO_ROOT}/.tmp_ultralytics"
-WEBOTS_CAMERA_PORT="5599"
-WEBOTS_CAMERA_ENCODING="gray8"
-SEND_COMMANDS="0"
+MISSION_CENTER_DWELL
+MISSION_CENTER_CLEARANCE_REQUIRED
+MISSION_CENTER_LOST_GRACE_TICKS
+MISSION_REQUIRED_DETECTION_TICKS
+MISSION_MAX_DETECTION_AGE
+MISSION_SEEK_YAW_RATE
+MISSION_GATE_PASS_DISTANCE
+MISSION_GATE_PASS_SPEED
+MISSION_NEXT_GATE_ACQUIRE_SPEED
+MISSION_NEXT_GATE_CLEAR_DISTANCE
+MISSION_NEXT_GATE_MIN_AREA
+MISSION_GATE_READY_AREA
+MISSION_NEXT_GATE_MAX_DISTANCE
+MISSION_NEXT_GATE_TIMEOUT
+MISSION_BRAKE_SETTLE
+MISSION_BRAKE_RAMP
+MISSION_BRAKE_ALTITUDE_HOLD
+MISSION_FINAL_EXIT_DISTANCE
+MISSION_FINAL_EXIT_SPEED
 ```
 
-Then run the profile launcher:
+Visual servo smoothness and clearance:
+
+```text
+VISUAL_FILTER_ALPHA
+VISUAL_COMMAND_FILTER_ALPHA
+VISUAL_CENTER_DEADBAND_X
+VISUAL_CENTER_DEADBAND_Y
+VISUAL_ALIGNED_ERROR_X
+VISUAL_ALIGNED_ERROR_Y
+VISUAL_PASS_TARGET_OFFSET_X
+VISUAL_PASS_TARGET_OFFSET_Y
+VISUAL_PASS_CLEARANCE_LEFT
+VISUAL_PASS_CLEARANCE_RIGHT
+VISUAL_PASS_CLEARANCE_UP
+VISUAL_PASS_CLEARANCE_DOWN
+VISUAL_MAX_ERROR_FOR_FORWARD
+VISUAL_MAX_FORWARD_SPEED
+VISUAL_LATERAL_KP
+VISUAL_VERTICAL_KP
+VISUAL_YAW_KP
+VISUAL_MAX_LATERAL_SPEED
+VISUAL_MAX_VERTICAL_SPEED
+VISUAL_MAX_YAW_RATE
+```
+
+Example one-shot tuning:
 
 ```bash
+MISSION_GATE_READY_AREA=0.050 \
+MISSION_NEXT_GATE_MIN_AREA=0.012 \
+WEBOTS_DIAGNOSTICS_WINDOW=1 \
+SEND_COMMANDS=0 \
 bash scripts/run_iris_camera_yolo.sh
 ```
 
-Equivalent generic launcher:
+## Diagnostics Checklist
+
+Before `SEND_COMMANDS=1`, verify:
+
+- Webots camera stream is alive.
+- OpenCV diagnostics window appears.
+- Frame line shows `rgb8`, not `rgb8_from_gray8`.
+- Candidate labels show `cls=3:Goals-Detection`.
+- Candidate labels show a plausible `g=...` hollow-gate appearance score for
+  the real gate only if the optional appearance filter is enabled.
+- Dog/Forklift/Table do not appear as selected targets.
+- Selected gate bbox is stable before `CENTER_GATE`.
+- Far/ready area boxes match the expected gate-2 acquire behavior.
+- Clearance rectangle represents the safe pass center for the drone body.
+- Console uses `udp:127.0.0.1:14551` for autonomy, not `14550`.
+
+Optional camera-only probe:
 
 ```bash
-DETECTOR=webots-yolo SEND_COMMANDS=0 scripts/run_autonomy_sitl.sh
+python scripts/probe_webots_camera.py --host 127.0.0.1 --port 5599
 ```
 
-Important:
-
-- The upstream ArduPilot Webots camera stream is grayscale. The adapter expands
-  it to three channels for YOLO. This tests geometry/perception wiring, not true
-  RGB color behavior.
-- `iris_camera.wbt` includes experimental `RobotstadiumGoal` objects.
-- The bundled model accepts class id `0`, observed as `Goals-Detection`.
-- If the gate is not visible, the model path is wrong, or the class filter is
-  wrong, the mission should stay in `seek_gate` and keep scanning.
-- Keep `SEND_COMMANDS="0"` until the detector is stable.
-
-See `docs/webots-yolo-pipeline.md` for the full detector pipeline and class
-filtering rules.
-
-## Course Direction
-
-`forward_position_m` is computed from ArduPilot `LOCAL_POSITION_NED`.
-
-Default:
+Expected:
 
 ```text
-COURSE_FORWARD_X=1.0
-COURSE_FORWARD_Y=0.0
+camera frame ok source=tcp://127.0.0.1:5599 size=640x480 encoding=rgb8
 ```
 
-This means course-forward is local NED x/North.
+## Expected Mission Behavior
 
-If the Webots gate line points along local y/East:
+With `SEND_COMMANDS=1` in SITL:
 
 ```text
-COURSE_FORWARD_X=0.0
-COURSE_FORWARD_Y=1.0
+takeoff -> seek gate 1 -> center dwell -> pass gate 1
+-> clear forward/acquire gate 2 -> brake -> center dwell -> pass gate 2
+-> final forward exit -> brake -> land
 ```
 
-When the custom Webots world exists, this must be verified before trusting gate pass distance, adaptive acquire distance, or final forward exit distance.
+Takeoff is ArduPilot-managed through `MAV_CMD_NAV_TAKEOFF`. The companion code
+does not run a body-z takeoff bootstrap controller.
 
-## Runtime Modes
+During committed `PASS_GATE`, the command is forward-only body velocity plus
+altitude hold. Lateral/yaw visual corrections are not kept active while crossing
+the gate.
 
-`drone-autonomy --mode heartbeat`
+## Troubleshooting Pointers
 
-- Blocks until heartbeat is received.
-- Use this first to validate MAVLink endpoint.
-
-`drone-autonomy --mode listen`
-
-- Prints raw MAVLink messages.
-- Useful to confirm `LOCAL_POSITION_NED` is being received.
-
-`drone-autonomy --mode autonomy --detector synthetic`
-
-- Runs mission logic with synthetic gate detections.
-- Good for SITL wiring without camera/model I/O.
-
-`drone-autonomy --mode autonomy --detector webots-yolo`
-
-- Reads Webots camera frames from the TCP stream.
-- Runs YOLO and returns real `GateDetection` objects.
-- Requires `pip install -e ".[vision]"` and `--yolo-model`.
-
-`--send-commands`
-
-- Required before runtime sends MAVLink commands.
-- Omit this flag for dry-run.
-
-## What This Does Not Test Yet
-
-- Gate behavior without a trained/provided YOLO model.
-- True RGB camera behavior; upstream `iris_camera.wbt` stream is grayscale.
-- Custom two-gate geometry or lighting.
-- Real obstacle avoidance.
-- Hardware safety behavior.
-
-Those come after the custom Webots world and detector adapter exist.
+- No camera frame: check Webots world, `--camera camera`, and port `5599`.
+- Mission Planner disconnects: keep Mission Planner on `14550`; autonomy uses
+  `14551`.
+- Wrong class target: check startup `webots-yolo class_filter ...`, the OpenCV
+  `raw=...` line, and the `cls=id:name` labels. Non-gate raw classes should be
+  filtered out; `raw=3:Goals-Detection` on a non-gate is a model/input issue.
+- Gate 2 easy to lose: tune `MISSION_NEXT_GATE_MIN_AREA`,
+  `MISSION_GATE_READY_AREA`, selector stability, and detection stale time after
+  class filtering is verified.
+- Drone moves in dry-run: it should not. Stop and confirm `SEND_COMMANDS=0`.
