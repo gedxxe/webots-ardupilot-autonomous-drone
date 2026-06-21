@@ -157,6 +157,14 @@ The first implementation uses image-based visual servoing:
   value. The generic runner reads `configs/autonomy_runtime.env` and forwards
   only explicitly set values; do not reintroduce duplicated shell fallback
   defaults for mission/control tuning.
+- `MAVLINK_BAUD` / `--baud` exists for serial hardware endpoints such as
+  `/dev/ttyACM0` and `/dev/ttyACM1`. UDP SITL endpoints ignore this setting, so
+  do not change simulation behavior when documenting or tuning baud.
+- `scripts/run_raspi_hardware.sh` is a dry-run hardware scaffold. It loads
+  `configs/raspi_runtime.env` when present and keeps `SEND_COMMANDS=0` by
+  default. Do not describe it as a validated hardware flight launcher.
+- `configs/raspi_runtime.env.example` intentionally uses `DETECTOR="none"`
+  because the real Logitech C920/OpenCV detector is not implemented yet.
 - Do not tell operators to tune `configs/autonomy_runtime.env.example` directly.
   That file is the tracked template. Real experiment tuning belongs in
   `configs/autonomy_runtime.env` or inline env overrides.
@@ -200,6 +208,11 @@ The first implementation uses image-based visual servoing:
   runtime values before tuning gains.
 - `YOLO_IMGSZ=640` is Ultralytics inference/letterbox size, not camera
   resolution. Do not describe it as a 640x640 camera frame.
+- `docs/mathematical-foundations.md` documents the implemented equations for
+  target selection, filtered proportional visual servoing, clearance validation,
+  forward-distance segments, brake ramp, and altitude bias. Do not claim PID,
+  MPC, LQR, feed-forward, SLAM, or metric monocular depth is implemented unless
+  code and tests are added.
 - If `webots-yolo` is discussed, state that it requires an external model file
   unless `models/gate_yolov8n_best.pt` is present, and that this repo's
   `iris_camera.wbt` should stream `rgb24`. If diagnostics show

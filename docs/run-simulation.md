@@ -3,6 +3,10 @@
 Runbook ini fokus ke workflow yang dipakai sekarang: Webots `iris_camera.wbt`,
 ArduPilot SITL, YOLO gate detector, dan OpenCV diagnostics window.
 
+Untuk Raspberry Pi/Pixhawk hardware scaffold, gunakan
+`docs/deployment-raspi.md`. Jangan campur `configs/raspi_runtime.env` dengan
+tuning simulasi `iris_camera.wbt`.
+
 ## Terminal Layout
 
 Gunakan empat terminal. Mission Planner opsional, tapi berguna untuk monitoring.
@@ -133,6 +137,7 @@ AUTONOMY_PROFILE="iris-camera-yolo"
 DETECTOR="webots-yolo"                 # profile-owned unless set inline
 WEBOTS_DIAGNOSTICS_WINDOW="1"          # profile-owned unless set inline
 MAVLINK_CONNECTION="udp:127.0.0.1:14551"
+MAVLINK_BAUD="115200"                  # ignored by UDP SITL
 YOLO_MODEL_PATH="models/gate_yolov8n_best.pt"
 YOLO_GATE_CLASS_NAMES="Goals-Detection"
 YOLO_GATE_CLASS_IDS="3"

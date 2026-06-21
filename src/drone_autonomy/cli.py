@@ -36,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="MAVLink connection string.",
     )
     parser.add_argument(
+        "--baud",
+        type=int,
+        default=_RUNTIME_DEFAULTS.mavlink_baud,
+        help="MAVLink serial baud rate. UDP endpoints ignore this pymavlink setting.",
+    )
+    parser.add_argument(
         "--mode",
         choices=["heartbeat", "listen", "autonomy"],
         default="heartbeat",
@@ -490,6 +496,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = AutonomyRuntime(
             AutonomyRuntimeConfig(
                 connection=args.connection,
+                mavlink_baud=args.baud,
                 loop_hz=args.loop_hz,
                 max_runtime_s=args.max_runtime,
                 heartbeat_timeout_s=args.timeout,
@@ -581,7 +588,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from drone_autonomy.mavlink.connection import MavlinkClient
 
-    client = MavlinkClient(args.connection)
+    client = MavlinkClient(args.connection, baud=args.baud)
     heartbeat = client.wait_heartbeat(timeout=args.timeout)
     print(
         "heartbeat "

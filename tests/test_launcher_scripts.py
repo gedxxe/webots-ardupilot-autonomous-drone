@@ -21,3 +21,14 @@ def test_generic_runner_has_no_duplicated_shell_default_table() -> None:
     assert "DEFAULT_MISSION_" not in script
     assert "DEFAULT_VISUAL_" not in script
     assert "DEFAULT_GATE_SELECTOR_" not in script
+    assert "MAVLINK_BAUD" in script
+    assert "append_arg_if_nonempty --baud MAVLINK_BAUD" in script
+
+
+def test_raspi_hardware_wrapper_is_dry_run_scaffold() -> None:
+    script = (REPO_ROOT / "scripts" / "run_raspi_hardware.sh").read_text()
+
+    assert "configs/raspi_runtime.env" in script
+    assert "AUTONOMY_ENV_FILE" in script
+    assert 'SEND_COMMANDS="${SEND_COMMANDS:-0}"' in script
+    assert "run_autonomy_sitl.sh" in script

@@ -10,6 +10,9 @@ The detector may consume:
 - Webots `iris_camera.wbt` TCP camera frames in simulation.
 - Recorded frames for tests or tuning.
 
+Only the Webots TCP camera path is implemented today. The Logitech C920/OpenCV
+frame source is planned hardware work and must reuse this same contract.
+
 Current implemented simulation path:
 
 ```text

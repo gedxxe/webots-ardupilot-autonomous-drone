@@ -13,6 +13,8 @@
 - Done: `listen` mode can inspect raw MAVLink messages.
 - Done: runtime waits for `LOCAL_POSITION_NED` before mission decisions.
 - Done: connection settings are centralized in config/env files.
+- Done: serial MAVLink baud can be set with `MAVLINK_BAUD` / `--baud` for
+  Raspberry Pi USB Pixhawk tests.
 
 ## Stage 3: Basic Autonomy Commands
 
@@ -36,12 +38,15 @@
 - Pending: validate the trained model against the actual `iris_camera.wbt`
   viewpoint and lighting.
 - Pending: custom two-gate Webots world and gate assets.
-- Pending: true RGB Webots stream or real camera source.
+- Done: true RGB Webots stream for the current `iris_camera.wbt` profile.
+- Pending: real C920/OpenCV camera source.
 
 ## Stage 6: Hardware Readiness
 
 - Done: mission/perception/adapter boundaries are separated.
+- Done: Raspberry Pi dry-run env template and launcher scaffold.
+- Done: paper-oriented mathematical foundations document for current behavior.
 - Pending: C920/OpenCV hardware camera source.
-- Pending: Raspberry Pi deployment docs.
-- Pending: hardware safety procedure and launch profile.
+- Pending: hardware safety procedure and validated command-sending launch profile.
+- Pending: heartbeat-loss process failsafe and `COMMAND_ACK` retry policy.
 - Required invariant: preserve the same high-level autonomy API across SITL and hardware.

@@ -2,11 +2,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${REPO_ROOT}/configs/autonomy_runtime.env"
+ENV_FILE="${AUTONOMY_ENV_FILE:-${REPO_ROOT}/configs/autonomy_runtime.env}"
 
 CONFIG_KEYS=(
   AUTONOMY_PROFILE
   MAVLINK_CONNECTION
+  MAVLINK_BAUD
   DETECTOR
   SEND_COMMANDS
   LOOP_HZ
@@ -242,6 +243,7 @@ cmd=(
 )
 
 append_arg_if_nonempty --connection MAVLINK_CONNECTION
+append_arg_if_nonempty --baud MAVLINK_BAUD
 append_arg_if_nonempty --detector DETECTOR
 append_arg_if_nonempty --loop-hz LOOP_HZ
 append_arg_if_nonempty --max-runtime MAX_RUNTIME

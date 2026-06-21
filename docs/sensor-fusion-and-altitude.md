@@ -49,6 +49,9 @@ Before hardware, Webots should provide equivalent signals through ArduPilot SITL
 
 The mission code should not need to know whether telemetry came from Webots or hardware.
 
+For the current Raspberry Pi preparation status and dry-run launcher, read
+`docs/deployment-raspi.md`. That path does not change this fusion policy.
+
 ## Practical Hardware Direction
 
 For the real drone, prefer this split:

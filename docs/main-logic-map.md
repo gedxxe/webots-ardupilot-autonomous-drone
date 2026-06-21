@@ -206,10 +206,20 @@ Runtime CLI flags:
 src/drone_autonomy/cli.py
 ```
 
+`--connection` selects the MAVLink endpoint. `--baud` is passed to pymavlink
+for serial endpoints such as `/dev/ttyACM0`; UDP SITL endpoints ignore that
+setting.
+
 Runtime shell env example:
 
 ```text
 configs/autonomy_runtime.env.example
+```
+
+Raspberry Pi dry-run shell env example:
+
+```text
+configs/raspi_runtime.env.example
 ```
 
 This file is only the git-tracked template. For real local tuning, copy it to:
@@ -259,3 +269,8 @@ preset, not a second hidden source of truth. Actual simulation tuning should be
 done in `configs/autonomy_runtime.env` or through inline environment variables.
 `scripts/run_autonomy_sitl.sh` reads that env file and only passes values that
 are explicitly set into `src/drone_autonomy/cli.py`.
+
+`scripts/run_raspi_hardware.sh` reuses the same generic runner with
+`AUTONOMY_ENV_FILE=configs/raspi_runtime.env` when present. It defaults to
+dry-run and `DETECTOR="none"` until a real C920/OpenCV detector mode is
+implemented.

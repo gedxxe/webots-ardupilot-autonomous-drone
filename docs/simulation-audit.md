@@ -49,6 +49,8 @@ Before `--send-commands`:
 - YOLO gate detector wrapper that converts model boxes to `GateDetection`.
 - Trained YOLOv8n gate model at `models/gate_yolov8n_best.pt`.
 - Iris camera YOLO launcher profile at `scripts/run_iris_camera_yolo.sh`.
+- Serial MAVLink baud support for future Raspberry Pi USB Pixhawk tests.
+- Raspberry Pi dry-run deployment scaffold and paper-oriented math docs.
 
 ## Still Required Outside Code
 
@@ -78,14 +80,12 @@ before they are treated as a competition-grade world.
 
 - `COMMAND_ACK` parsing and retry policy.
 - Lost-heartbeat failsafe in the runtime loop.
-- Confirmed `rgb8` diagnostics from this repo's `iris_camera.wbt` profile. If
-  diagnostics show `rgb8_from_gray8`, the run is still on an upstream-compatible
-  grayscale path and should not be compared directly with normal RGB video.
 - Real-hardware C920/OpenCV camera source.
 - Dedicated YAML/TOML mission tuning file. Current tuning is available through
   CLI flags and `configs/autonomy_runtime.env`.
 - Automatic course-frame calibration.
-- Hardware launch profile.
+- Validated hardware flight launch profile. The current Raspberry Pi launcher is
+  dry-run scaffold only.
 
 ## High-Risk Items to Verify in SITL
 

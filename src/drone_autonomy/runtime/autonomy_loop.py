@@ -70,7 +70,10 @@ class AutonomyRuntime:
            and optionally send the returned command.
         """
 
-        master = mavutil.mavlink_connection(self.config.connection)
+        master = mavutil.mavlink_connection(
+            self.config.connection,
+            baud=self.config.mavlink_baud,
+        )
         heartbeat = master.wait_heartbeat(timeout=self.config.heartbeat_timeout_s)
         if heartbeat is None:
             raise TimeoutError(f"No heartbeat from {self.config.connection}")
@@ -78,6 +81,7 @@ class AutonomyRuntime:
         command_mode = "send-commands" if self.config.send_commands else "dry-run"
         print(
             f"autonomy connection={self.config.connection} "
+            f"baud={self.config.mavlink_baud} "
             f"detector={self.config.detector} "
             f"command_mode={command_mode} "
             f"loop_hz={self.config.loop_hz}"

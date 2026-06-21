@@ -18,6 +18,7 @@ class AutonomyRuntimeConfig:
     """
 
     connection: str = "udp:127.0.0.1:14551"
+    mavlink_baud: int = 115200
     loop_hz: float = 20.0
     max_runtime_s: float = 180.0
     heartbeat_timeout_s: float = 30.0

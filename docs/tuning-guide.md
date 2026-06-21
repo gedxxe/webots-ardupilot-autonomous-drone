@@ -31,6 +31,16 @@ profile owns detector mode and diagnostics defaults. It does not own mission
 thresholds, clearance margins, gains, or custom model settings. Keep those in
 `configs/autonomy_runtime.env` or pass them inline for a single run.
 
+Raspberry Pi hardware scaffold values live in:
+
+```text
+configs/raspi_runtime.env
+```
+
+Do not use the Raspberry Pi template for simulation tuning. The hardware
+template defaults to `DETECTOR="none"` and `SEND_COMMANDS="0"` because real
+C920/OpenCV perception is not implemented yet.
+
 Use inline environment variables for one-shot experiments:
 
 ```bash
@@ -201,6 +211,7 @@ changing it.
 | Variable | Used by | Purpose and rationale | Tune when |
 | --- | --- | --- | --- |
 | `MAVLINK_CONNECTION` | runtime | MAVLink endpoint consumed by autonomy. Use `14551` so Mission Planner can stay on `14550`. | Change only if SITL exposes a different extra output. |
+| `MAVLINK_BAUD` | runtime | Serial baud passed to pymavlink for endpoints such as `/dev/ttyACM0`. UDP SITL ignores it. | Change on Raspberry Pi only when ArduPilot serial settings require it. |
 | `SEND_COMMANDS` | runtime | Safety switch. `0` runs perception and mission decisions without moving the vehicle. | Set `1` only after diagnostics show the correct target in SITL. |
 | `LOOP_HZ` | runtime | Mission/control tick rate. Higher rates reduce command latency but cannot make YOLO faster. | Keep `20` unless CPU load or telemetry rate proves otherwise. |
 | `MAX_RUNTIME` | runtime | Process-level timeout. Prevents a runaway unattended test. | Increase only for longer courses after failsafe behavior is verified. |

@@ -70,6 +70,32 @@ drone-autonomy --mode listen --connection udp:127.0.0.1:14551 --count 5
 
 If no messages print, the issue is before the autonomy code.
 
+## `No heartbeat from /dev/ttyACM0`
+
+This is the Raspberry Pi/Pixhawk serial path, not SITL UDP.
+
+Check these in order:
+
+1. Pixhawk is connected over USB and powered.
+2. Linux created `/dev/ttyACM0` or `/dev/ttyACM1`.
+3. Your user can read/write the device, or you are using the correct udev/dialout setup.
+4. `MAVLINK_BAUD` matches the ArduPilot serial setting. Start with `115200`.
+
+Smoke test:
+
+```bash
+drone-autonomy --mode heartbeat --connection /dev/ttyACM0 --baud 115200
+```
+
+Fallback device:
+
+```bash
+drone-autonomy --mode heartbeat --connection /dev/ttyACM1 --baud 115200
+```
+
+The Raspberry Pi launcher is still a dry-run scaffold. It does not enable real
+C920 detection and should not be treated as a validated flight launcher.
+
 ## Mission Planner disconnects while autonomy is running
 
 This is usually UDP endpoint contention, not a blocking mission loop. Mission

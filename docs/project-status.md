@@ -1,8 +1,8 @@
 # Project Status and Agent Ground Truth
 
-Last audited status: 2026-06-18, after redesigning gate-pass mission behavior
-around centering dwell, configurable image-space clearance, and committed
-forward pass distance.
+Last audited status: 2026-06-21, after adding Raspberry Pi deployment
+scaffold, serial MAVLink baud configuration, and paper-oriented mathematical
+documentation without changing the simulation mission logic.
 
 This document is the short source of truth for AI agents and maintainers. If a
 claim conflicts with this file, verify the code and update this file before
@@ -48,6 +48,8 @@ continuing.
   altitude, and local forward position.
 - MAVLink command adapter for guided mode, arm, takeoff, land, and body-frame
   velocity.
+- MAVLink runtime supports serial baud configuration through `MAVLINK_BAUD` /
+  `--baud`. UDP SITL behavior remains on `udp:127.0.0.1:14551` by default.
 - SITL launcher can expose an additional MAVLink UDP output through
   `MAVLINK_OUT_EXTRA`, so Mission Planner and the autonomy runtime can use
   separate local ports.
@@ -87,6 +89,10 @@ continuing.
   target/margins.
 - Trained YOLOv8n gate model at `models/gate_yolov8n_best.pt`.
 - Iris camera YOLO launcher profile at `scripts/run_iris_camera_yolo.sh`.
+- Raspberry Pi dry-run deployment scaffold at `scripts/run_raspi_hardware.sh`
+  and `configs/raspi_runtime.env.example`.
+- Paper-oriented mathematical behavior documentation in
+  `docs/mathematical-foundations.md`.
 - Local `iris_camera.wbt` requests true RGB camera streaming with
   `--camera-format rgb24`; `gray8` remains supported for upstream compatibility.
 - Experimental `RobotstadiumGoal` Webots PROTO and two goal instances in
@@ -102,13 +108,19 @@ continuing.
 - Dedicated YAML/TOML mission tuning file. Current tuning is exposed through
   CLI flags and `configs/autonomy_runtime.env`.
 - Automatic course-frame calibration.
-- Hardware launch/deployment profile.
+- Validated hardware flight launch profile. The current Raspberry Pi path is
+  only a dry-run deployment scaffold until the camera adapter and safety
+  procedure are implemented.
 
 ## Safety Defaults
 
 - `SEND_COMMANDS="0"` is the default. This runs dry-run decisions only.
 - Use `SEND_COMMANDS="1"` only in SITL after heartbeat, local-position telemetry,
   detector behavior, and body-frame signs are verified.
+- `scripts/run_raspi_hardware.sh` also defaults to dry-run and loads
+  `configs/raspi_runtime.env` when present. The tracked Raspberry Pi template
+  uses `DETECTOR="none"` because real C920/OpenCV perception is not implemented
+  yet.
 - `webots-yolo` must use fail-closed class filtering during motion tests. Do
   not accept every class unless the model detects only gates.
 - The current gate model should be filtered by class name
@@ -187,6 +199,10 @@ continuing.
 - `docs/run-simulation.md`: exact Ubuntu/Webots/SITL runbook.
 - `docs/tuning-guide.md`: technical tuning reference for YOLO, OpenCV
   overlays, gate acquire, pass commit, and visual servo parameters.
+- `docs/mathematical-foundations.md`: equations and state-machine model that
+  match the implemented code behavior.
+- `docs/deployment-raspi.md`: staged Raspberry Pi deployment scaffold and
+  hardware safety boundary.
 - `docs/webots-yolo-pipeline.md`: Webots camera stream to YOLO to
   `GateDetection`.
 - `docs/main-logic-map.md`: code path and ownership map.

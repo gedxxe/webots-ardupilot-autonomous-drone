@@ -14,9 +14,10 @@ class MavlinkClient:
     adapter loop and pass the latest fused telemetry snapshot into the mission.
     """
 
-    def __init__(self, connection: str) -> None:
+    def __init__(self, connection: str, *, baud: int = 115200) -> None:
         self.connection = connection
-        self.master = mavutil.mavlink_connection(connection)
+        self.baud = baud
+        self.master = mavutil.mavlink_connection(connection, baud=baud)
 
     def wait_heartbeat(self, timeout: float = 10.0) -> Any:
         """Block until a heartbeat arrives or the timeout expires."""

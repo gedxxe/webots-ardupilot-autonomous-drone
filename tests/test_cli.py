@@ -7,6 +7,7 @@ def test_cli_parser_defaults_are_available_without_runtime_adapters() -> None:
     args = parser.parse_args([])
 
     assert args.connection == "udp:127.0.0.1:14551"
+    assert args.baud == 115200
     assert args.webots_camera_encoding == "rgb24"
     assert args.gate_class_names == "Goals-Detection"
     assert args.gate_class_ids == "3"
@@ -29,3 +30,12 @@ def test_cli_help_distinguishes_yolo_imgsz_from_camera_resolution() -> None:
 
     assert "YOLO inference/letterbox size" in help_text
     assert "width/height" in help_text
+
+
+def test_cli_parser_accepts_hardware_serial_baud() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(["--connection", "/dev/ttyACM1", "--baud", "921600"])
+
+    assert args.connection == "/dev/ttyACM1"
+    assert args.baud == 921600
