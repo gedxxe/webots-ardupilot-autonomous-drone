@@ -12,6 +12,12 @@ CONFIG_KEYS=(
   SEND_COMMANDS
   LOOP_HZ
   MAX_RUNTIME
+  MAVLINK_HEARTBEAT_STALE
+  MAVLINK_LOCAL_POSITION_STALE
+  COMMAND_ACK_REQUIRED
+  COMMAND_ACK_TIMEOUT
+  COMMAND_ACK_MAX_RETRIES
+  AUTONOMY_LOG_JSONL
   COURSE_FORWARD_X
   COURSE_FORWARD_Y
   WEBOTS_CAMERA_HOST
@@ -20,6 +26,15 @@ CONFIG_KEYS=(
   WEBOTS_CAMERA_IDLE_RECONNECT
   WEBOTS_DETECTION_STALE
   WEBOTS_DIAGNOSTICS_WINDOW
+  OPENCV_CAMERA_SOURCE
+  OPENCV_CAMERA_BACKEND
+  OPENCV_CAMERA_WIDTH
+  OPENCV_CAMERA_HEIGHT
+  OPENCV_CAMERA_FPS
+  OPENCV_CAMERA_READ_TIMEOUT
+  OPENCV_CAMERA_OPEN_RETRY
+  OPENCV_DETECTION_STALE
+  OPENCV_DIAGNOSTICS_WINDOW
   YOLO_CONFIDENCE
   YOLO_IMGSZ
   YOLO_GATE_CLASS_NAMES
@@ -163,13 +178,33 @@ append_arg_if_nonempty() {
   fi
 }
 
+append_bool_optional_arg() {
+  local key="$1"
+  local enabled_option="$2"
+  local disabled_option="$3"
+  case "${!key:-}" in
+    "1"|"true"|"TRUE"|"yes"|"YES")
+      cmd+=("${enabled_option}")
+      ;;
+    "0"|"false"|"FALSE"|"no"|"NO")
+      cmd+=("${disabled_option}")
+      ;;
+    "")
+      ;;
+    *)
+      echo "${key} must be 0/1, true/false, or yes/no" >&2
+      exit 2
+      ;;
+  esac
+}
+
 apply_profile_defaults
 
 if [[ -z "${YOLO_MODEL_PATH:-}" && "${DETECTOR:-}" == "webots-yolo" && -f "${BUNDLED_YOLO_MODEL_PATH}" ]]; then
   YOLO_MODEL_PATH="${BUNDLED_YOLO_MODEL_PATH}"
 fi
 
-if [[ "${DETECTOR:-}" == "webots-yolo" ]]; then
+if [[ "${DETECTOR:-}" == "webots-yolo" || "${DETECTOR:-}" == "opencv-yolo" ]]; then
   export YOLO_CONFIG_DIR="${YOLO_CONFIG_DIR:-${REPO_ROOT}/.tmp_ultralytics}"
   mkdir -p "${YOLO_CONFIG_DIR}"
 fi
@@ -247,6 +282,12 @@ append_arg_if_nonempty --baud MAVLINK_BAUD
 append_arg_if_nonempty --detector DETECTOR
 append_arg_if_nonempty --loop-hz LOOP_HZ
 append_arg_if_nonempty --max-runtime MAX_RUNTIME
+append_arg_if_nonempty --mavlink-heartbeat-stale MAVLINK_HEARTBEAT_STALE
+append_arg_if_nonempty --mavlink-local-position-stale MAVLINK_LOCAL_POSITION_STALE
+append_bool_optional_arg COMMAND_ACK_REQUIRED --command-ack-required --no-command-ack-required
+append_arg_if_nonempty --command-ack-timeout COMMAND_ACK_TIMEOUT
+append_arg_if_nonempty --command-ack-max-retries COMMAND_ACK_MAX_RETRIES
+append_arg_if_nonempty --log-jsonl AUTONOMY_LOG_JSONL
 append_arg_if_nonempty --course-forward-x COURSE_FORWARD_X
 append_arg_if_nonempty --course-forward-y COURSE_FORWARD_Y
 append_arg_if_nonempty --webots-camera-host WEBOTS_CAMERA_HOST
@@ -254,6 +295,14 @@ append_arg_if_nonempty --webots-camera-port WEBOTS_CAMERA_PORT
 append_arg_if_nonempty --webots-camera-encoding WEBOTS_CAMERA_ENCODING
 append_arg_if_nonempty --webots-camera-idle-reconnect WEBOTS_CAMERA_IDLE_RECONNECT
 append_arg_if_nonempty --webots-detection-stale WEBOTS_DETECTION_STALE
+append_arg_if_nonempty --opencv-camera-source OPENCV_CAMERA_SOURCE
+append_arg_if_nonempty --opencv-camera-backend OPENCV_CAMERA_BACKEND
+append_arg_if_nonempty --opencv-camera-width OPENCV_CAMERA_WIDTH
+append_arg_if_nonempty --opencv-camera-height OPENCV_CAMERA_HEIGHT
+append_arg_if_nonempty --opencv-camera-fps OPENCV_CAMERA_FPS
+append_arg_if_nonempty --opencv-camera-read-timeout OPENCV_CAMERA_READ_TIMEOUT
+append_arg_if_nonempty --opencv-camera-open-retry OPENCV_CAMERA_OPEN_RETRY
+append_arg_if_nonempty --opencv-detection-stale OPENCV_DETECTION_STALE
 append_arg_if_nonempty --yolo-model YOLO_MODEL_PATH
 append_arg_if_nonempty --yolo-confidence YOLO_CONFIDENCE
 append_arg_if_nonempty --yolo-imgsz YOLO_IMGSZ
@@ -314,6 +363,10 @@ append_arg_if_nonempty --visual-max-yaw-rate VISUAL_MAX_YAW_RATE
 
 if [[ "${WEBOTS_DIAGNOSTICS_WINDOW:-0}" == "1" ]]; then
   cmd+=(--webots-diagnostics-window)
+fi
+
+if [[ "${OPENCV_DIAGNOSTICS_WINDOW:-0}" == "1" ]]; then
+  cmd+=(--opencv-diagnostics-window)
 fi
 
 if [[ "${MISSION_BRAKE_ALTITUDE_HOLD:-0}" == "1" ]]; then

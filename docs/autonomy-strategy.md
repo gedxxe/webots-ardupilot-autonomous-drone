@@ -142,7 +142,12 @@ This is intentionally not a PID or velocity controller in the companion
 process. ArduPilot owns the attitude, motor, altitude, and takeoff inner loops;
 the mission only gates phase progression based on telemetry.
 
-The mission maintains altitude during search, pass, adaptive acquire, brake, and final forward exit by adding a small vertical velocity correction toward the takeoff altitude. During visual centering, vertical image correction is allowed but bounded by altitude guards.
+The mission maintains altitude during search, pass, adaptive acquire, and final
+forward exit by adding a small vertical velocity correction toward the takeoff
+altitude. During `BRAKE`, companion altitude correction is off by default
+through `MISSION_BRAKE_ALTITUDE_HOLD=0`; the command sends zero vertical
+velocity unless that guard is explicitly enabled. During visual centering,
+vertical image correction is allowed but bounded by altitude guards.
 
 The altitude input should be fused local telemetry from ArduPilot or a simulator adapter. The mission must not consume raw GPS, raw rangefinder, or raw optical-flow samples directly.
 
@@ -186,6 +191,6 @@ from the vendored Webots controller. `gray8` remains supported only for
 upstream-compatible fallback worlds; seeing `rgb8_from_gray8` in diagnostics
 means the run is not using the current RGB simulation path.
 
-Future camera work should replace only the frame source, for example with a
-C920/OpenCV adapter, while preserving the same `YoloGateDetector ->
-GateDetection -> mission` boundary.
+The Raspberry Pi `opencv-yolo` path already replaces only the frame source with
+`OpenCvCameraSource`. It preserves the same `YoloGateDetector ->
+GateTargetSelector -> GateDetection -> mission` boundary.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import hypot
+from time import monotonic
 from typing import Any
 
 from pymavlink import mavutil
@@ -65,14 +66,21 @@ class MavlinkTelemetryAdapter:
         self.altitude_m: float | None = None
         self.origin_x_m: float | None = None
         self.origin_y_m: float | None = None
+        self.last_heartbeat_s: float | None = None
+        self.last_local_position_s: float | None = None
+        self.last_extended_state_s: float | None = None
 
-    def update_message(self, message: Any) -> None:
+    def update_message(self, message: Any, observed_at_s: float | None = None) -> None:
+        observed_at_s = monotonic() if observed_at_s is None else observed_at_s
         message_type = self._message_type(message)
         if message_type == "HEARTBEAT":
+            self.last_heartbeat_s = observed_at_s
             self._update_heartbeat(message)
         elif message_type == "LOCAL_POSITION_NED":
+            self.last_local_position_s = observed_at_s
             self._update_local_position(message)
         elif message_type == "EXTENDED_SYS_STATE":
+            self.last_extended_state_s = observed_at_s
             self._update_extended_state(message)
 
     def snapshot(
@@ -104,6 +112,33 @@ class MavlinkTelemetryAdapter:
             landed=self.landed,
             gate_detection=gate_detection,
         )
+
+    def stale_reason(
+        self,
+        now_s: float,
+        *,
+        heartbeat_stale_s: float,
+        local_position_stale_s: float,
+    ) -> str | None:
+        """Return why fused MAVLink telemetry is unsafe to use, if stale."""
+
+        if self.last_heartbeat_s is None:
+            return "no heartbeat timestamp"
+        if now_s - self.last_heartbeat_s > heartbeat_stale_s:
+            return (
+                "heartbeat stale "
+                f"age={now_s - self.last_heartbeat_s:0.2f}s/"
+                f"{heartbeat_stale_s:0.2f}s"
+            )
+        if self.last_local_position_s is None:
+            return "no LOCAL_POSITION_NED timestamp"
+        if now_s - self.last_local_position_s > local_position_stale_s:
+            return (
+                "LOCAL_POSITION_NED stale "
+                f"age={now_s - self.last_local_position_s:0.2f}s/"
+                f"{local_position_stale_s:0.2f}s"
+            )
+        return None
 
     def _update_heartbeat(self, message: Any) -> None:
         base_mode = int(getattr(message, "base_mode", 0) or 0)

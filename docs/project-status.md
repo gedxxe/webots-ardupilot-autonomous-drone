@@ -1,8 +1,8 @@
 # Project Status and Agent Ground Truth
 
-Last audited status: 2026-06-21, after adding Raspberry Pi deployment
-scaffold, serial MAVLink baud configuration, and paper-oriented mathematical
-documentation without changing the simulation mission logic.
+Last audited status: 2026-07-02, after consolidating the shared YOLO provider
+wiring for Webots/OpenCV, keeping SITL on `webots-yolo`, and keeping Raspberry
+Pi hardware on a fail-closed dry-run scaffold.
 
 This document is the short source of truth for AI agents and maintainers. If a
 claim conflicts with this file, verify the code and update this file before
@@ -48,6 +48,11 @@ continuing.
   altitude, and local forward position.
 - MAVLink command adapter for guided mode, arm, takeoff, land, and body-frame
   velocity.
+- MAVLink `COMMAND_ACK` tracking for mission `COMMAND_LONG` commands:
+  arm/disarm, guided takeoff, and land. Accepted ACKs clear pending commands;
+  rejected ACKs or exhausted ACK timeouts fail closed in the runtime.
+- Configurable ACK policy through `COMMAND_ACK_REQUIRED`,
+  `COMMAND_ACK_TIMEOUT`, and `COMMAND_ACK_MAX_RETRIES`.
 - MAVLink runtime supports serial baud configuration through `MAVLINK_BAUD` /
   `--baud`. UDP SITL behavior remains on `udp:127.0.0.1:14551` by default.
 - SITL launcher can expose an additional MAVLink UDP output through
@@ -56,7 +61,7 @@ continuing.
 - Runtime modes:
   `heartbeat`, `listen`, and `autonomy`.
 - Detector modes:
-  `none`, `synthetic`, and `webots-yolo`.
+  `none`, `synthetic`, `webots-yolo`, and `opencv-yolo`.
 - Synthetic detector for mission/MAVLink wiring only.
 - Synthetic detector keeps fake detections continuous across
   `SEEK_GATE -> CENTER_GATE` to avoid phase oscillation during wiring tests.
@@ -81,6 +86,12 @@ continuing.
 - `webots-yolo` runs camera ingestion and YOLO inference in background workers.
   The mission loop only reads the latest fresh detection snapshot; it does not
   block on TCP frame reads or model inference.
+- `opencv-yolo` reuses the same bounded-latest YOLO/target-selector provider
+  with an OpenCV camera frame source for Raspberry Pi/C920 dry-run tests.
+- `scripts/probe_opencv_camera.py` checks the C920/OpenCV source without
+  MAVLink, YOLO, or mission logic.
+- `scripts/probe_opencv_yolo.py` checks the C920/OpenCV source plus YOLO and
+  `GateTargetSelector` without MAVLink or mission logic.
 - YOLO target selection is no longer embedded in `YoloGateDetector`; selection
   belongs to `perception/target_selector.py`.
 - Optional OpenCV diagnostics window can show accepted YOLO candidates, selected
@@ -91,6 +102,14 @@ continuing.
 - Iris camera YOLO launcher profile at `scripts/run_iris_camera_yolo.sh`.
 - Raspberry Pi dry-run deployment scaffold at `scripts/run_raspi_hardware.sh`
   and `configs/raspi_runtime.env.example`.
+- NCNN export helper at `scripts/export_yolo_ncnn.py` for preparing the gate
+  YOLO model for Raspberry Pi 5 inference.
+- Offline profile preflight checker at `scripts/preflight_check.py`.
+- Optional runtime JSONL diagnostics through `AUTONOMY_LOG_JSONL`.
+- MAVLink stale telemetry guards through `MAVLINK_HEARTBEAT_STALE` and
+  `MAVLINK_LOCAL_POSITION_STALE`. If telemetry is stale, the runtime does not
+  run mission updates and sends zero-velocity hold while command sending is
+  enabled.
 - Paper-oriented mathematical behavior documentation in
   `docs/mathematical-foundations.md`.
 - Local `iris_camera.wbt` requests true RGB camera streaming with
@@ -102,15 +121,22 @@ continuing.
 
 - A validated competition-grade two-gate Webots course. The current goal objects
   are experimental geometry for perception/world iteration.
-- Real-hardware C920/OpenCV camera source.
-- `COMMAND_ACK` parsing and retry policy.
-- Lost-heartbeat failsafe in the process runtime.
+- Hardware-validated C920/OpenCV camera behavior and field tuning.
+- Verified NCNN runtime performance on Raspberry Pi 5.
+- Hardware-validated `COMMAND_ACK` behavior on the real Pixhawk path. Current
+  implementation is code/test covered but still needs real serial flight-stack
+  validation.
+- `set_mode` ACK tracking. The current code uses pymavlink's `set_mode()`
+  helper and validates mode transition through telemetry rather than a tracked
+  `COMMAND_ACK`.
+- Hardware heartbeat-loss procedure and field validation. The runtime already
+  has stale-heartbeat hold behavior, but that is not a complete field runbook.
 - Dedicated YAML/TOML mission tuning file. Current tuning is exposed through
   CLI flags and `configs/autonomy_runtime.env`.
 - Automatic course-frame calibration.
-- Validated hardware flight launch profile. The current Raspberry Pi path is
-  only a dry-run deployment scaffold until the camera adapter and safety
-  procedure are implemented.
+- Validated hardware flight launch profile. The current Raspberry Pi path is a
+  dry-run deployment scaffold until C920/NCNN performance, serial MAVLink/ACK
+  behavior, body-frame signs, and the field safety procedure are validated.
 
 ## Safety Defaults
 
@@ -119,8 +145,12 @@ continuing.
   detector behavior, and body-frame signs are verified.
 - `scripts/run_raspi_hardware.sh` also defaults to dry-run and loads
   `configs/raspi_runtime.env` when present. The tracked Raspberry Pi template
-  uses `DETECTOR="none"` because real C920/OpenCV perception is not implemented
-  yet.
+  uses `DETECTOR="none"` until the operator explicitly validates C920/OpenCV
+  diagnostics and switches to `DETECTOR="opencv-yolo"`.
+- Production hardware OS target is Raspberry Pi OS 64-bit standard with
+  desktop. Production model runtime target is an NCNN export of the trained
+  gate model. Keep these as deployment decisions unless hardware evidence
+  forces a change.
 - `webots-yolo` must use fail-closed class filtering during motion tests. Do
   not accept every class unless the model detects only gates.
 - The current gate model should be filtered by class name
@@ -151,6 +181,9 @@ continuing.
   controls when CENTER_GATE is allowed to approach while still off-center.
 - For jerky CENTER_GATE motion, tune speed/rate limits and command filtering
   before increasing gains or adding PID/FF terms.
+- ACK tuning lives in `COMMAND_ACK_REQUIRED`, `COMMAND_ACK_TIMEOUT`, and
+  `COMMAND_ACK_MAX_RETRIES`. These affect tracked `COMMAND_LONG` commands only.
+  Velocity setpoints do not produce `COMMAND_ACK`.
 - `scripts/run_autonomy_sitl.sh` launches this repo's Python module from `src/`
   before falling back to any `drone-autonomy` executable in `PATH`. It reads
   local `configs/autonomy_runtime.env` and forwards only explicitly set values
@@ -159,8 +192,9 @@ continuing.
   `AUTONOMY_PROFILE="iris-camera-yolo"`. The profile enforces `webots-yolo`
   detector mode and diagnostics by default, while model path, class filters,
   thresholds, speeds, and gains remain tunable from env or inline overrides.
-- Real-hardware behavior is future work unless a dedicated hardware adapter and
-  safety procedure are added.
+- Real-hardware command-sending flight is not validated. The `opencv-yolo`
+  adapter exists for dry-run perception, but `SEND_COMMANDS=1` on hardware
+  still requires the safety procedure and field validation.
 - When Mission Planner is open, keep it on `udp:127.0.0.1:14550` and run the
   autonomy runtime on a separate SITL output such as `udp:127.0.0.1:14551`.
   Do not make both processes consume the same UDP endpoint.

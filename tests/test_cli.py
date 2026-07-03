@@ -8,7 +8,19 @@ def test_cli_parser_defaults_are_available_without_runtime_adapters() -> None:
 
     assert args.connection == "udp:127.0.0.1:14551"
     assert args.baud == 115200
+    assert args.mavlink_heartbeat_stale == 3.0
+    assert args.mavlink_local_position_stale == 1.0
+    assert args.command_ack_required is True
+    assert args.command_ack_timeout == 1.0
+    assert args.command_ack_max_retries == 2
+    assert args.log_jsonl == ""
     assert args.webots_camera_encoding == "rgb24"
+    assert args.opencv_camera_source == "0"
+    assert args.opencv_camera_backend == "default"
+    assert args.opencv_camera_width == 640
+    assert args.opencv_camera_height == 480
+    assert args.opencv_camera_fps == 30.0
+    assert args.opencv_detection_stale == 0.75
     assert args.gate_class_names == "Goals-Detection"
     assert args.gate_class_ids == "3"
     assert args.yolo_imgsz == 640
@@ -39,3 +51,57 @@ def test_cli_parser_accepts_hardware_serial_baud() -> None:
 
     assert args.connection == "/dev/ttyACM1"
     assert args.baud == 921600
+
+
+def test_cli_parser_accepts_command_ack_policy() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "--no-command-ack-required",
+            "--command-ack-timeout",
+            "2.5",
+            "--command-ack-max-retries",
+            "4",
+        ]
+    )
+
+    assert args.command_ack_required is False
+    assert args.command_ack_timeout == 2.5
+    assert args.command_ack_max_retries == 4
+
+
+def test_cli_parser_accepts_jsonl_log_path() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(["--log-jsonl", "logs/autonomy.jsonl"])
+
+    assert args.log_jsonl == "logs/autonomy.jsonl"
+
+
+def test_cli_parser_accepts_opencv_yolo_detector_settings() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "--detector",
+            "opencv-yolo",
+            "--opencv-camera-source",
+            "/dev/video2",
+            "--opencv-camera-backend",
+            "v4l2",
+            "--opencv-camera-width",
+            "1280",
+            "--opencv-camera-height",
+            "720",
+            "--opencv-camera-fps",
+            "30",
+        ]
+    )
+
+    assert args.detector == "opencv-yolo"
+    assert args.opencv_camera_source == "/dev/video2"
+    assert args.opencv_camera_backend == "v4l2"
+    assert args.opencv_camera_width == 1280
+    assert args.opencv_camera_height == 720
+    assert args.opencv_camera_fps == 30.0

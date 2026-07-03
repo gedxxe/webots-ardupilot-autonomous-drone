@@ -60,8 +60,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Heartbeat wait timeout in seconds.",
     )
     parser.add_argument(
+        "--mavlink-heartbeat-stale",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mavlink_heartbeat_stale_s,
+        help="Fail-closed if heartbeat age exceeds this many seconds.",
+    )
+    parser.add_argument(
+        "--mavlink-local-position-stale",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mavlink_local_position_stale_s,
+        help="Fail-closed if LOCAL_POSITION_NED age exceeds this many seconds.",
+    )
+    parser.add_argument(
+        "--command-ack-required",
+        action=argparse.BooleanOptionalAction,
+        default=_RUNTIME_DEFAULTS.command_ack_required,
+        help="Require COMMAND_ACK for tracked COMMAND_LONG motion commands.",
+    )
+    parser.add_argument(
+        "--command-ack-timeout",
+        type=float,
+        default=_RUNTIME_DEFAULTS.command_ack_timeout_s,
+        help="Seconds to wait for COMMAND_ACK before retry/fail-closed.",
+    )
+    parser.add_argument(
+        "--command-ack-max-retries",
+        type=int,
+        default=_RUNTIME_DEFAULTS.command_ack_max_retries,
+        help="Retries after the initial COMMAND_LONG send before fail-closed.",
+    )
+    parser.add_argument(
+        "--log-jsonl",
+        default=_RUNTIME_DEFAULTS.log_jsonl_path,
+        help="Optional JSONL diagnostics log path. Empty disables file logging.",
+    )
+    parser.add_argument(
         "--detector",
-        choices=["none", "synthetic", "webots-yolo"],
+        choices=["none", "synthetic", "webots-yolo", "opencv-yolo"],
         default="none",
         help="Detection source for autonomy mode.",
     )
@@ -127,6 +162,58 @@ def build_parser() -> argparse.ArgumentParser:
         "--webots-diagnostics-window",
         action="store_true",
         help="Show an OpenCV diagnostics window for Webots YOLO frames.",
+    )
+    parser.add_argument(
+        "--opencv-camera-source",
+        default=_RUNTIME_DEFAULTS.opencv_camera_source,
+        help="OpenCV camera source for hardware, for example 0 or /dev/video0.",
+    )
+    parser.add_argument(
+        "--opencv-camera-backend",
+        choices=["default", "v4l2"],
+        default=_RUNTIME_DEFAULTS.opencv_camera_backend,
+        help="OpenCV capture backend for hardware camera reads.",
+    )
+    parser.add_argument(
+        "--opencv-camera-width",
+        type=int,
+        default=_RUNTIME_DEFAULTS.opencv_camera_width_px,
+        help="Requested OpenCV camera width in pixels.",
+    )
+    parser.add_argument(
+        "--opencv-camera-height",
+        type=int,
+        default=_RUNTIME_DEFAULTS.opencv_camera_height_px,
+        help="Requested OpenCV camera height in pixels.",
+    )
+    parser.add_argument(
+        "--opencv-camera-fps",
+        type=float,
+        default=_RUNTIME_DEFAULTS.opencv_camera_fps,
+        help="Requested OpenCV camera capture FPS.",
+    )
+    parser.add_argument(
+        "--opencv-camera-read-timeout",
+        type=float,
+        default=_RUNTIME_DEFAULTS.opencv_camera_read_timeout_s,
+        help="Sleep interval while the OpenCV camera has not produced a frame.",
+    )
+    parser.add_argument(
+        "--opencv-camera-open-retry",
+        type=float,
+        default=_RUNTIME_DEFAULTS.opencv_camera_open_retry_s,
+        help="Seconds between OpenCV camera reopen attempts.",
+    )
+    parser.add_argument(
+        "--opencv-detection-stale",
+        type=float,
+        default=_RUNTIME_DEFAULTS.opencv_detection_stale_s,
+        help="Maximum age in seconds for reusing the latest OpenCV YOLO detection.",
+    )
+    parser.add_argument(
+        "--opencv-diagnostics-window",
+        action="store_true",
+        help="Show an OpenCV diagnostics window for hardware YOLO frames.",
     )
     parser.add_argument(
         "--yolo-model",
@@ -500,6 +587,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 loop_hz=args.loop_hz,
                 max_runtime_s=args.max_runtime,
                 heartbeat_timeout_s=args.timeout,
+                mavlink_heartbeat_stale_s=args.mavlink_heartbeat_stale,
+                mavlink_local_position_stale_s=args.mavlink_local_position_stale,
+                command_ack_required=args.command_ack_required,
+                command_ack_timeout_s=args.command_ack_timeout,
+                command_ack_max_retries=args.command_ack_max_retries,
+                log_jsonl_path=args.log_jsonl,
                 detector=args.detector,
                 send_commands=args.send_commands,
                 course_forward_x=args.course_forward_x,
@@ -510,6 +603,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 webots_camera_idle_reconnect_s=args.webots_camera_idle_reconnect,
                 webots_detection_stale_s=args.webots_detection_stale,
                 webots_diagnostics_window=args.webots_diagnostics_window,
+                opencv_camera_source=args.opencv_camera_source,
+                opencv_camera_backend=args.opencv_camera_backend,
+                opencv_camera_width_px=args.opencv_camera_width,
+                opencv_camera_height_px=args.opencv_camera_height,
+                opencv_camera_fps=args.opencv_camera_fps,
+                opencv_camera_read_timeout_s=args.opencv_camera_read_timeout,
+                opencv_camera_open_retry_s=args.opencv_camera_open_retry,
+                opencv_detection_stale_s=args.opencv_detection_stale,
+                opencv_diagnostics_window=args.opencv_diagnostics_window,
                 yolo_model_path=args.yolo_model,
                 yolo_confidence=args.yolo_confidence,
                 yolo_image_size_px=args.yolo_imgsz,

@@ -66,10 +66,20 @@ Current detector modes:
 - `webots-yolo`: Webots TCP camera stream plus YOLO wrapper. This repo's
   `iris_camera.wbt` requests `rgb24` from the vendored Webots controller via
   `--camera-format rgb24`.
+- `opencv-yolo`: OpenCV camera source plus the same YOLO wrapper and
+  `GateTargetSelector`; intended for Raspberry Pi/C920 dry-run validation.
 
 Current `webots-yolo` perception pipeline:
 
 1. Webots TCP camera frame.
+2. YOLO class-filtered raw `GateCandidate` list.
+3. `GateTargetSelector` geometry validation, stability window, target tracking,
+   bbox smoothing, and selected `GateDetection`.
+4. Mission consumes only `GateDetection | None`.
+
+Current `opencv-yolo` perception pipeline:
+
+1. OpenCV C920 frame source.
 2. YOLO class-filtered raw `GateCandidate` list.
 3. `GateTargetSelector` geometry validation, stability window, target tracking,
    bbox smoothing, and selected `GateDetection`.
@@ -157,14 +167,46 @@ The first implementation uses image-based visual servoing:
   value. The generic runner reads `configs/autonomy_runtime.env` and forwards
   only explicitly set values; do not reintroduce duplicated shell fallback
   defaults for mission/control tuning.
+- `scripts/preflight_check.py` is offline diagnostics only. It validates config
+  shape and model file presence without opening MAVLink/camera or arming. Do
+  not wire it into the mission loop as a blocking state-machine dependency.
+- `scripts/probe_opencv_yolo.py` probes `OpenCvCameraSource -> YOLO ->
+  GateTargetSelector` without MAVLink. Use it for Raspberry Pi/C920 diagnostics,
+  not as a flight launcher.
+- `AUTONOMY_LOG_JSONL` enables optional JSONL diagnostics. Logging must remain
+  best-effort and must not change vehicle commands or mission transitions.
 - `MAVLINK_BAUD` / `--baud` exists for serial hardware endpoints such as
   `/dev/ttyACM0` and `/dev/ttyACM1`. UDP SITL endpoints ignore this setting, so
   do not change simulation behavior when documenting or tuning baud.
+- `COMMAND_ACK_REQUIRED`, `COMMAND_ACK_TIMEOUT`, and
+  `COMMAND_ACK_MAX_RETRIES` configure retry/fail-closed behavior for tracked
+  mission `COMMAND_LONG` commands only. Current tracked commands are
+  arm/disarm, guided takeoff, and land.
+- Do not claim velocity setpoints have `COMMAND_ACK`; body velocity is streamed
+  through `SET_POSITION_TARGET_LOCAL_NED`.
+- Do not claim `set_mode()` ACK tracking is implemented. Mode entry is
+  validated from heartbeat telemetry because the adapter currently uses
+  pymavlink's mode helper.
+- ACKs for setup commands such as message interval requests are not mission
+  safety ACKs. They may be logged, but they must not trip the tracked-command
+  fail-closed path.
 - `scripts/run_raspi_hardware.sh` is a dry-run hardware scaffold. It loads
   `configs/raspi_runtime.env` when present and keeps `SEND_COMMANDS=0` by
   default. Do not describe it as a validated hardware flight launcher.
 - `configs/raspi_runtime.env.example` intentionally uses `DETECTOR="none"`
-  because the real Logitech C920/OpenCV detector is not implemented yet.
+  even though `opencv-yolo` exists. Operators must validate C920 frame geometry,
+  NCNN model loading, class filtering, and diagnostics before switching the
+  local config to `DETECTOR="opencv-yolo"`.
+- The production Raspberry Pi decision is Raspberry Pi OS 64-bit standard with
+  desktop. Do not switch docs back to Ubuntu or Lite unless new hardware tests
+  justify it.
+- The production model runtime target is NCNN. `scripts/export_yolo_ncnn.py`
+  prepares the generated NCNN directory from `models/gate_yolov8n_best.pt`;
+  treat `models/*_ncnn_model/` as generated and ignored.
+- "Zero error tolerance" in this repo means fail-closed behavior: no fresh
+  telemetry, stale camera/detection, empty class filter, missing ACK policy, or
+  unset safety procedure must prevent motion commands instead of allowing an
+  optimistic flight.
 - Do not tell operators to tune `configs/autonomy_runtime.env.example` directly.
   That file is the tracked template. Real experiment tuning belongs in
   `configs/autonomy_runtime.env` or inline env overrides.
@@ -232,4 +274,7 @@ The first implementation uses image-based visual servoing:
 - If Webots world/proto files are modified in the working tree, verify whether
   they are intentional user design changes before staging. Do not mix accidental
   Webots GUI churn with autonomy/code documentation commits.
-- If real-hardware behavior is discussed, mark it as a future adapter unless implemented.
+- If real-hardware behavior is discussed, distinguish adapter implementation
+  from flight validation. `opencv-yolo` exists for C920 dry-run perception, but
+  real command-sending flight remains unvalidated until safety procedure,
+  hardware ACK validation, and field tuning are complete.

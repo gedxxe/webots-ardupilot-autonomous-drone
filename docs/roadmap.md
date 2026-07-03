@@ -19,14 +19,21 @@
 ## Stage 3: Basic Autonomy Commands
 
 - Done: guided mode, arm, takeoff, land, and body-frame velocity command helpers.
-- Pending: `COMMAND_ACK` parsing, retry policy, and command timeout handling.
+- Done: `COMMAND_ACK` parsing, retry policy, and command timeout handling for
+  tracked mission `COMMAND_LONG` commands: arm/disarm, takeoff, and land.
+- Pending: hardware validation of ACK behavior over the real Pixhawk serial
+  path.
+- Pending: optional `set_mode` ACK tracking. Current validation is telemetry
+  based because the code uses pymavlink's `set_mode()` helper.
 
 ## Stage 4: Navigation Logic
 
 - Done: deterministic mission state machine for the two-gate task.
 - Done: local forward-distance projection from `LOCAL_POSITION_NED`.
 - Done: adaptive next-gate acquire and brake-before-center.
-- Pending: lost-heartbeat failsafe in the process runtime.
+- Done: MAVLink heartbeat and local-position stale guards fail closed before
+  mission updates.
+- Pending: full lost-heartbeat field failsafe policy with operator procedure.
 - Pending: automatic course-frame calibration.
 
 ## Stage 5: Sensors and Perception
@@ -39,14 +46,25 @@
   viewpoint and lighting.
 - Pending: custom two-gate Webots world and gate assets.
 - Done: true RGB Webots stream for the current `iris_camera.wbt` profile.
-- Pending: real C920/OpenCV camera source.
+- Done: real C920/OpenCV camera source for dry-run perception.
+- Pending: validate C920/OpenCV behavior on Raspberry Pi 5 hardware.
 
 ## Stage 6: Hardware Readiness
 
 - Done: mission/perception/adapter boundaries are separated.
 - Done: Raspberry Pi dry-run env template and launcher scaffold.
 - Done: paper-oriented mathematical foundations document for current behavior.
-- Pending: C920/OpenCV hardware camera source.
+- Done: production deployment direction locked to Raspberry Pi OS 64-bit
+  standard plus NCNN-exported YOLO model.
+- Done: NCNN export helper for the trained gate model.
+- Done: C920/OpenCV hardware camera source and `opencv-yolo` detector mode.
+- Done: offline preflight checker for simulation and Raspberry Pi env profiles.
+- Done: OpenCV camera plus YOLO probe that does not touch MAVLink.
+- Done: optional JSONL runtime diagnostics logging.
+- Done: tracked command ACK retry/fail-closed policy at the MAVLink adapter and
+  runtime level.
+- Pending: Raspberry Pi 5 NCNN FPS/latency measurement.
 - Pending: hardware safety procedure and validated command-sending launch profile.
-- Pending: heartbeat-loss process failsafe and `COMMAND_ACK` retry policy.
+- Pending: heartbeat-loss field procedure and hardware validation of the ACK
+  retry policy.
 - Required invariant: preserve the same high-level autonomy API across SITL and hardware.

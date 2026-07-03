@@ -1,5 +1,27 @@
 # Troubleshooting Q&A
 
+## Preflight fails before a run
+
+`scripts/preflight_check.py` is offline. It validates config shape, class
+filters, ports, and model paths only; it does not connect to MAVLink or cameras.
+The simulation profile mirrors `run_iris_camera_yolo.sh`, so it checks the
+`webots-yolo` iris-camera path.
+
+Simulation:
+
+```bash
+python scripts/preflight_check.py --profile simulation
+```
+
+Raspberry Pi:
+
+```bash
+python scripts/preflight_check.py --profile raspi
+```
+
+Fix `error ...` lines before enabling motion commands. `info dry_run` is normal
+when `SEND_COMMANDS=0`.
+
 ## `drone-autonomy: command not found`
 
 The package entry point is not installed in the active shell. Activate the
@@ -93,8 +115,9 @@ Fallback device:
 drone-autonomy --mode heartbeat --connection /dev/ttyACM1 --baud 115200
 ```
 
-The Raspberry Pi launcher is still a dry-run scaffold. It does not enable real
-C920 detection and should not be treated as a validated flight launcher.
+The Raspberry Pi launcher is still a dry-run-first scaffold. It does not enable
+C920 detection by default and should not be treated as a validated flight
+launcher.
 
 ## Mission Planner disconnects while autonomy is running
 
@@ -164,6 +187,7 @@ Check:
 - Runtime first prints `sent phase=takeoff ... cmd=takeoff`.
 - TAKEOFF remains on `cmd=takeoff` until fused altitude is stable near `1.0 m`.
 - ArduPilot accepts the guided takeoff command while armed.
+- Runtime does not print `fail-closed COMMAND_ACK failure ...`.
 
 The expected takeoff profile is:
 
@@ -175,7 +199,55 @@ The mission intentionally does not send body-z velocity during TAKEOFF. If it
 stays on the ground and only prints repeated `cmd=takeoff`, check MAVProxy for
 prearm, mode, EKF, or command rejection messages before changing mission logic.
 
-Current code does not yet parse `COMMAND_ACK`, so MAVProxy output is the best immediate clue.
+The runtime tracks `COMMAND_ACK` for arm/disarm, takeoff, and land. If ArduPilot
+rejects one of those commands, the companion prints a fail-closed ACK reason
+instead of silently continuing.
+
+## Runtime prints `fail-closed COMMAND_ACK failure`
+
+The command adapter sent a tracked `COMMAND_LONG` command and ArduPilot either
+rejected it or did not ACK it before the retry budget was exhausted.
+
+Relevant variables:
+
+```text
+COMMAND_ACK_REQUIRED
+COMMAND_ACK_TIMEOUT
+COMMAND_ACK_MAX_RETRIES
+```
+
+Tracked commands:
+
+```text
+arm/disarm
+takeoff
+land
+```
+
+Not tracked by ACK:
+
+```text
+body velocity setpoint stream
+guided mode helper; mode is validated from HEARTBEAT telemetry
+telemetry message interval setup
+```
+
+If the detail says `MAV_RESULT_DENIED`, `MAV_RESULT_TEMPORARILY_REJECTED`, or
+another non-accepted result, check ArduPilot prearm, EKF, mode, and failsafe
+messages first. Do not increase timeout for a rejected command.
+
+If the detail says timeout, check that the runtime is receiving MAVLink messages
+from the same endpoint it sends commands to. For SITL, keep Mission Planner on
+`14550` and autonomy on `14551` when `MAVLINK_OUT_EXTRA` is enabled.
+
+For a controlled debugging run only, ACK enforcement can be disabled:
+
+```bash
+COMMAND_ACK_REQUIRED=0 SEND_COMMANDS=1 bash scripts/run_iris_camera_yolo.sh
+```
+
+Do not use that as a hardware flight workaround. Fix the ACK path or ArduPilot
+rejection cause first.
 
 ## Vehicle overshoots the 1 m takeoff target
 
@@ -298,6 +370,69 @@ bash scripts/run_iris_camera_yolo.sh
 ```
 
 The `.tmp_ultralytics/` folder is ignored by git.
+
+## `opencv-yolo` waits for camera frames
+
+This is the Raspberry Pi/C920 path. Keep `SEND_COMMANDS=0` while debugging it.
+
+Check the camera devices:
+
+```bash
+v4l2-ctl --list-devices
+```
+
+Probe the selected source without MAVLink or YOLO:
+
+```bash
+python scripts/probe_opencv_camera.py --source /dev/video0 --backend v4l2
+```
+
+Then set the source in `configs/raspi_runtime.env`:
+
+```text
+OPENCV_CAMERA_SOURCE="/dev/video0"
+OPENCV_CAMERA_BACKEND="v4l2"
+OPENCV_CAMERA_WIDTH="640"
+OPENCV_CAMERA_HEIGHT="480"
+OPENCV_CAMERA_FPS="30"
+OPENCV_DIAGNOSTICS_WINDOW="1"
+```
+
+Start dry-run perception only after the NCNN export exists:
+
+```text
+DETECTOR="opencv-yolo"
+YOLO_MODEL_PATH="${REPO_ROOT}/models/gate_yolov8n_best_ncnn_model"
+SEND_COMMANDS="0"
+```
+
+If the diagnostics frame size is not `640x480`, update
+`VISUAL_FRAME_WIDTH/HEIGHT` to the actual frame geometry before tuning gains.
+
+If startup prints `opencv-yolo class_filter names=<none> ids=<none>`, stop and
+fix `YOLO_GATE_CLASS_NAMES` and/or `YOLO_GATE_CLASS_IDS`. Empty class filters
+are unsafe.
+
+## Runtime prints `fail-closed waiting for fresh MAVLink`
+
+The runtime refuses to advance mission logic with stale telemetry.
+
+Relevant variables:
+
+```text
+MAVLINK_HEARTBEAT_STALE
+MAVLINK_LOCAL_POSITION_STALE
+```
+
+Do not simply increase them first. Check that ArduPilot is streaming
+`HEARTBEAT` and `LOCAL_POSITION_NED` at the expected rate:
+
+```bash
+drone-autonomy --connection /dev/ttyACM0 --baud 115200 --mode listen --count 50
+```
+
+If local position is missing, fix ArduPilot EKF/stream configuration before
+running autonomy.
 
 ## `webots-yolo` stays in `seeking gate`
 
@@ -702,9 +837,12 @@ cached copy of that external Cyberbotics PROTO. If this blocks startup in
 Ubuntu, first confirm the machine can reach GitHub/raw.githubusercontent.com,
 then reopen the world.
 
-## Tests skip MAVLink adapter tests
+## MAVLink dependency is missing in the test environment
 
-The tests are skipped when `pymavlink` is not installed in the test environment.
+Most tests do not require a live Pixhawk or SITL. The MAVLink command adapter
+unit test uses real `pymavlink` constants when available and a local test-only
+fallback when `pymavlink` is missing, so ACK/retry logic can still be exercised
+offline.
 
 Install dependencies:
 
@@ -712,3 +850,6 @@ Install dependencies:
 pip install -e ".[dev]"
 python -m pytest
 ```
+
+If you want to run actual heartbeat/listen/autonomy modes, `pymavlink` must be
+installed in the active environment because runtime code talks to real MAVLink.

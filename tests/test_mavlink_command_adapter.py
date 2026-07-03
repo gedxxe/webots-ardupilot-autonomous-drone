@@ -1,6 +1,4 @@
-import pytest
-
-mavutil = pytest.importorskip("pymavlink.mavutil")
+from pymavlink import mavutil
 
 from drone_autonomy.autonomy.commands import VehicleCommand
 from drone_autonomy.mavlink.commands import (
@@ -38,6 +36,15 @@ def adapter_for(master: FakeMaster) -> MavlinkCommandAdapter:
         master,
         MavlinkCommandAdapterConfig(command_repeat_interval_s=0.0),
     )
+
+
+class FakeCommandAck:
+    def __init__(self, command: int, result: int) -> None:
+        self.command = command
+        self.result = result
+
+    def get_type(self) -> str:
+        return "COMMAND_ACK"
 
 
 def test_body_velocity_uses_body_ned_velocity_and_yaw_rate_mask() -> None:
@@ -87,3 +94,112 @@ def test_arm_and_takeoff_send_command_long() -> None:
     assert arm_call[4] == 1.0
     assert takeoff_call[2] == mavutil.mavlink.MAV_CMD_NAV_TAKEOFF
     assert takeoff_call[10] == 1.0
+
+
+def test_tracked_command_ack_acceptance_clears_pending() -> None:
+    master = FakeMaster()
+    adapter = adapter_for(master)
+
+    adapter.send(VehicleCommand.arm_vehicle(), now_s=1.0)
+
+    assert adapter.pending_ack_count == 1
+    adapter.update_message(
+        FakeCommandAck(
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            mavutil.mavlink.MAV_RESULT_ACCEPTED,
+        )
+    )
+
+    events = adapter.pop_ack_events()
+    assert adapter.pending_ack_count == 0
+    assert adapter.pop_ack_failures() == ()
+    assert len(events) == 1
+    assert events[0].label == "arm"
+    assert "MAV_RESULT_ACCEPTED" in events[0].detail
+
+
+def test_tracked_command_ack_rejection_becomes_failure() -> None:
+    master = FakeMaster()
+    adapter = adapter_for(master)
+
+    adapter.send(VehicleCommand.takeoff(1.0), now_s=1.0)
+    adapter.update_message(
+        FakeCommandAck(
+            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+            mavutil.mavlink.MAV_RESULT_DENIED,
+        )
+    )
+
+    failures = adapter.pop_ack_failures()
+    assert adapter.pending_ack_count == 0
+    assert len(failures) == 1
+    assert failures[0].label == "takeoff"
+    assert "MAV_RESULT_DENIED" in failures[0].detail
+
+
+def test_in_progress_command_ack_keeps_pending_command() -> None:
+    master = FakeMaster()
+    adapter = adapter_for(master)
+
+    adapter.send(VehicleCommand.takeoff(1.0), now_s=1.0)
+    adapter.update_message(
+        FakeCommandAck(
+            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+            mavutil.mavlink.MAV_RESULT_IN_PROGRESS,
+        )
+    )
+
+    events = adapter.pop_ack_events()
+    assert adapter.pending_ack_count == 1
+    assert adapter.pop_ack_failures() == ()
+    assert len(events) == 1
+    assert events[0].label == "takeoff"
+    assert "MAV_RESULT_IN_PROGRESS" in events[0].detail
+
+
+def test_command_ack_timeout_retries_then_fails() -> None:
+    master = FakeMaster()
+    adapter = MavlinkCommandAdapter(
+        master,
+        MavlinkCommandAdapterConfig(
+            command_repeat_interval_s=0.0,
+            command_ack_timeout_s=1.0,
+            command_ack_max_retries=1,
+        ),
+    )
+
+    adapter.send(VehicleCommand.land(), now_s=0.0)
+    adapter.update_ack_timeouts(now_s=1.1)
+
+    retry_events = adapter.pop_ack_events()
+    assert len(master.mav.command_long_calls) == 2
+    assert adapter.pending_ack_count == 1
+    assert adapter.pop_ack_failures() == ()
+    assert len(retry_events) == 1
+    assert "retry 1/1" in retry_events[0].detail
+
+    adapter.update_ack_timeouts(now_s=2.2)
+
+    failures = adapter.pop_ack_failures()
+    assert adapter.pending_ack_count == 0
+    assert len(failures) == 1
+    assert failures[0].label == "land"
+    assert "timeout after 2 send attempt" in failures[0].detail
+
+
+def test_untracked_command_ack_is_not_fail_closed() -> None:
+    master = FakeMaster()
+    adapter = adapter_for(master)
+
+    adapter.update_message(
+        FakeCommandAck(
+            mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+            mavutil.mavlink.MAV_RESULT_DENIED,
+        )
+    )
+
+    events = adapter.pop_ack_events()
+    assert adapter.pop_ack_failures() == ()
+    assert len(events) == 1
+    assert events[0].severity == "warning"
+    assert events[0].label.startswith("untracked command")

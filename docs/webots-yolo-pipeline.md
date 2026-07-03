@@ -18,8 +18,8 @@ Webots iris_camera.wbt
 
 The mission state machine does not import YOLO, Webots, NumPy, threading, or
 camera code. The runtime only reads the latest fresh detection snapshot. That
-boundary is intentional so the same mission can later use a Raspberry Pi 5 plus
-Logitech C920 adapter.
+boundary is intentional so the same mission can also use the Raspberry Pi 5
+`opencv-yolo` path with a Logitech C920 frame source.
 
 ## Concurrency Model
 
@@ -363,5 +363,6 @@ headless runs.
 6. Only then set `SEND_COMMANDS="1"` in SITL.
 
 This pipeline is not a substitute for hardware safety. Real flight still needs
-an explicit hardware camera adapter, flight envelope limits, emergency stop
-procedure, and environment-specific tuning.
+C920/NCNN validation on the Pi, flight envelope limits, emergency stop
+procedure, real Pixhawk validation of the implemented command ACK/retry policy,
+and environment-specific tuning.

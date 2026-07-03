@@ -10,8 +10,10 @@ Python companion autonomy stack for a two-gate drone mission using Webots,
 ArduPilot SITL, MAVLink, YOLO gate perception, and image-based visual servoing.
 
 The current implementation is simulation-first. Raspberry Pi hardware
-deployment is being prepared as a dry-run scaffold, but real C920/OpenCV
-perception and flight validation are still future work.
+deployment is being prepared around Raspberry Pi OS 64-bit standard and an
+NCNN-exported YOLO model. The C920/OpenCV perception path exists for dry-run
+validation, while real flight validation and command-sending safety remain
+unvalidated.
 
 ## Mission
 
@@ -67,6 +69,7 @@ Create local SITL config:
 ```bash
 cp configs/sitl_webots.env.example configs/sitl_webots.env
 nano configs/sitl_webots.env
+python scripts/preflight_check.py --profile simulation
 ```
 
 Typical terminal layout:
@@ -104,11 +107,28 @@ bash scripts/run_raspi_hardware.sh
 
 Default hardware assumptions:
 
+- OS: Raspberry Pi OS 64-bit standard with desktop
 - Pixhawk USB serial: `/dev/ttyACM0`
 - fallback device to try manually: `/dev/ttyACM1`
 - serial baud: `115200`
-- detector: `none` until the real C920/OpenCV adapter is implemented
+- model target: NCNN export of `models/gate_yolov8n_best.pt`
+- detector: `none` until C920/OpenCV diagnostics are validated; then
+  `opencv-yolo` for dry-run perception tests
 - command mode: `SEND_COMMANDS=0`
+
+Export the model for Raspberry Pi 5 inference:
+
+```bash
+python scripts/export_yolo_ncnn.py --model models/gate_yolov8n_best.pt --imgsz 640
+```
+
+Probe the C920 before YOLO/autonomy:
+
+```bash
+python scripts/probe_opencv_camera.py --source /dev/video0 --backend v4l2
+python scripts/probe_opencv_yolo.py --source /dev/video0 --backend v4l2 \
+  --model models/gate_yolov8n_best_ncnn_model --diagnostics-window
+```
 
 Read [docs/deployment-raspi.md](docs/deployment-raspi.md) before any real
 hardware test.
@@ -162,6 +182,7 @@ Implemented:
 
 - Webots + ArduPilot SITL baseline assets.
 - MAVLink telemetry and body-frame command adapter.
+- Tracked `COMMAND_ACK` retry/fail-closed handling for arm, takeoff, and land.
 - Two-gate mission state machine.
 - ArduPilot-managed guided takeoff.
 - Webots TCP camera client with `rgb24` support.
@@ -169,12 +190,17 @@ Implemented:
 - `GateTargetSelector` validation, scoring, tracking, and smoothing.
 - OpenCV diagnostics overlay for simulation tuning.
 - Raspberry Pi dry-run deployment scaffold.
+- NCNN export helper for Raspberry Pi model preparation.
+- Dry-run-capable C920/OpenCV YOLO detector path using the same
+  `GateTargetSelector` contract as Webots.
+- Offline preflight config checker for simulation/Raspberry Pi profiles.
+- Optional JSONL runtime diagnostics logging.
 
 Not implemented yet:
 
-- validated real Logitech C920 camera adapter,
+- validated real Logitech C920 flight behavior,
 - real hardware flight procedure,
-- hardware failsafe/retry policy,
+- hardware failsafe validation and field procedure,
 - competition-grade two-gate Webots course,
 - metric distance estimation from RGB.
 

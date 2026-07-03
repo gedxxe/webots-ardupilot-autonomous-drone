@@ -5,7 +5,7 @@ from enum import Enum
 
 
 class CommandKind(str, Enum):
-    """Command categories understood by future MAVLink/simulator adapters."""
+    """Command categories understood by MAVLink/simulator adapters."""
 
     NONE = "none"
     SET_MODE = "set_mode"

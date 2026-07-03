@@ -10,8 +10,13 @@ The detector may consume:
 - Webots `iris_camera.wbt` TCP camera frames in simulation.
 - Recorded frames for tests or tuning.
 
-Only the Webots TCP camera path is implemented today. The Logitech C920/OpenCV
-frame source is planned hardware work and must reuse this same contract.
+Implemented frame sources today:
+
+- Webots TCP camera stream for SITL.
+- OpenCV camera source for Logitech C920/Raspberry Pi dry-run validation.
+
+Both sources reuse this same contract. The mission must not know which camera
+source produced the frame.
 
 Current implemented simulation path:
 
@@ -19,6 +24,16 @@ Current implemented simulation path:
 webots/worlds/iris_camera.wbt
 -> TCP camera stream on 127.0.0.1:5599
 -> WebotsTcpCameraClient
+-> YoloGateDetector
+-> GateTargetSelector
+-> GateDetection
+```
+
+Current implemented hardware dry-run path:
+
+```text
+Logitech C920 / OpenCV
+-> OpenCvCameraSource
 -> YoloGateDetector
 -> GateTargetSelector
 -> GateDetection

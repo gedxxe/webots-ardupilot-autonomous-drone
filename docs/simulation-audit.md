@@ -49,7 +49,7 @@ Before `--send-commands`:
 - YOLO gate detector wrapper that converts model boxes to `GateDetection`.
 - Trained YOLOv8n gate model at `models/gate_yolov8n_best.pt`.
 - Iris camera YOLO launcher profile at `scripts/run_iris_camera_yolo.sh`.
-- Serial MAVLink baud support for future Raspberry Pi USB Pixhawk tests.
+- Serial MAVLink baud support for staged Raspberry Pi USB Pixhawk tests.
 - Raspberry Pi dry-run deployment scaffold and paper-oriented math docs.
 
 ## Still Required Outside Code
@@ -78,9 +78,14 @@ before they are treated as a competition-grade world.
 
 ## Not Yet Implemented in Code
 
-- `COMMAND_ACK` parsing and retry policy.
-- Lost-heartbeat failsafe in the runtime loop.
-- Real-hardware C920/OpenCV camera source.
+- Hardware validation of the implemented `COMMAND_ACK` retry policy over the
+  real Pixhawk serial path.
+- `set_mode` `COMMAND_ACK` tracking. Current mode validation is heartbeat
+  telemetry based.
+- Hardware heartbeat-loss field procedure. The runtime already has stale
+  heartbeat hold behavior, but that still needs real hardware validation.
+- Hardware-validated C920/OpenCV camera behavior. The source exists for
+  dry-run, but it still needs Raspberry Pi field validation.
 - Dedicated YAML/TOML mission tuning file. Current tuning is available through
   CLI flags and `configs/autonomy_runtime.env`.
 - Automatic course-frame calibration.

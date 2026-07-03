@@ -7,6 +7,44 @@ Untuk Raspberry Pi/Pixhawk hardware scaffold, gunakan
 `docs/deployment-raspi.md`. Jangan campur `configs/raspi_runtime.env` dengan
 tuning simulasi `iris_camera.wbt`.
 
+## Quick Run Order
+
+```bash
+# 0. Offline sanity check. No MAVLink, no camera, no arming.
+source .venv/bin/activate
+python scripts/preflight_check.py --profile simulation
+
+# 1. Optional monitor
+cd MissionPlanner/
+mono MissionPlanner.exe
+
+# 2. Webots
+cd /media/gedxxe/DATA/WeBots_Ardupilot
+webots webots/worlds/iris_camera.wbt
+
+# 3. ArduPilot SITL
+source .venv/bin/activate
+scripts/run_sitl_webots.sh
+
+# 4. Autonomy dry-run, then SITL command mode only after diagnostics are right
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=0 bash scripts/run_iris_camera_yolo.sh
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=1 bash scripts/run_iris_camera_yolo.sh
+```
+
+Optional structured log:
+
+```bash
+AUTONOMY_LOG_JSONL=logs/sitl-autonomy.jsonl \
+WEBOTS_DIAGNOSTICS_WINDOW=1 SEND_COMMANDS=0 \
+bash scripts/run_iris_camera_yolo.sh
+```
+
+For `--profile simulation`, preflight mirrors the current
+`run_iris_camera_yolo.sh` workflow and checks the `webots-yolo` iris-camera
+path. It is still manual diagnostics, not a runtime interlock. The mission loop
+owns fail-closed behavior for stale telemetry, ACK failures, and dry-run command
+guarding.
+
 ## Terminal Layout
 
 Gunakan empat terminal. Mission Planner opsional, tapi berguna untuk monitoring.

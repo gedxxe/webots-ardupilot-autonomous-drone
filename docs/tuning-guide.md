@@ -39,7 +39,20 @@ configs/raspi_runtime.env
 
 Do not use the Raspberry Pi template for simulation tuning. The hardware
 template defaults to `DETECTOR="none"` and `SEND_COMMANDS="0"` because real
-C920/OpenCV perception is not implemented yet.
+C920/OpenCV perception must be validated in dry-run before motion tests.
+
+Production Raspberry Pi direction:
+
+```text
+OS: Raspberry Pi OS 64-bit standard with desktop
+model runtime target: NCNN export of models/gate_yolov8n_best.pt
+```
+
+Export helper:
+
+```bash
+python scripts/export_yolo_ncnn.py --model models/gate_yolov8n_best.pt --imgsz 640
+```
 
 Use inline environment variables for one-shot experiments:
 
@@ -212,16 +225,31 @@ changing it.
 | --- | --- | --- | --- |
 | `MAVLINK_CONNECTION` | runtime | MAVLink endpoint consumed by autonomy. Use `14551` so Mission Planner can stay on `14550`. | Change only if SITL exposes a different extra output. |
 | `MAVLINK_BAUD` | runtime | Serial baud passed to pymavlink for endpoints such as `/dev/ttyACM0`. UDP SITL ignores it. | Change on Raspberry Pi only when ArduPilot serial settings require it. |
+| `MAVLINK_HEARTBEAT_STALE` | runtime | Maximum heartbeat age before runtime stops advancing mission logic and, if command mode is active, sends zero-velocity hold. | Increase only if telemetry logs prove valid heartbeat intervals exceed the default. |
+| `MAVLINK_LOCAL_POSITION_STALE` | runtime | Maximum `LOCAL_POSITION_NED` age before runtime fails closed instead of using old fused position/altitude. | Tune only after measuring actual ArduPilot stream rate. |
+| `COMMAND_ACK_REQUIRED` | MAVLink command adapter | `1` requires tracked mission `COMMAND_LONG` commands to receive accepted ACKs. `0` disables ACK enforcement for debugging only. | Keep `1` for SITL/hardware command tests; set `0` only to isolate a known ACK transport issue in dry-run or controlled SITL debugging. |
+| `COMMAND_ACK_TIMEOUT` | MAVLink command adapter | Seconds to wait for `COMMAND_ACK` before retrying the tracked command. | Increase if ArduPilot consistently ACKs slowly but telemetry remains fresh. Do not use this to mask rejected commands. |
+| `COMMAND_ACK_MAX_RETRIES` | MAVLink command adapter | Retry budget after the initial send before the runtime fails closed. | Increase only after verifying duplicate arm/takeoff/land commands are acceptable in the current test setup. |
+| `AUTONOMY_LOG_JSONL` | runtime diagnostics | Optional append-only JSONL log path for mission ticks, commands, detections, servo values, ACK events, and fail-closed waits. Empty means disabled. | Enable for tuning sessions when console output is not enough. Logging is best-effort and is not a safety interlock. |
 | `SEND_COMMANDS` | runtime | Safety switch. `0` runs perception and mission decisions without moving the vehicle. | Set `1` only after diagnostics show the correct target in SITL. |
 | `LOOP_HZ` | runtime | Mission/control tick rate. Higher rates reduce command latency but cannot make YOLO faster. | Keep `20` unless CPU load or telemetry rate proves otherwise. |
 | `MAX_RUNTIME` | runtime | Process-level timeout. Prevents a runaway unattended test. | Increase only for longer courses after failsafe behavior is verified. |
 | `COURSE_FORWARD_X/Y` | telemetry adapter | Projects `LOCAL_POSITION_NED` into course-forward distance. Gate pass, gate-2 clear, and final exit depend on this. | Change if the Webots course is not aligned with local +X/North. |
+
+ACK scope:
+
+```text
+tracked:    arm/disarm, takeoff, land
+not ACKed:  body velocity setpoint stream
+telemetry:  guided mode is validated from HEARTBEAT mode, not tracked ACK
+```
 
 ### Camera And YOLO
 
 | Variable | Used by | Purpose and rationale | Tune when |
 | --- | --- | --- | --- |
 | `YOLO_MODEL_PATH` | YOLO adapter | Model file used for gate candidates. The default is the bundled `models/gate_yolov8n_best.pt`. | Point to a new `best.pt` after retraining. |
+| `YOLO_MODEL_PATH` on Raspberry Pi | `opencv-yolo` adapter | Production target should be the exported NCNN directory, for example `models/gate_yolov8n_best_ncnn_model`. | Use only after NCNN load and diagnostics are validated on the Pi. |
 | `YOLO_CONFIDENCE` | YOLO adapter | First confidence cutoff before candidate geometry checks. Keeps low-confidence boxes out of the selector. | Lower slightly if real gates never appear; raise if many false candidates pass into diagnostics. |
 | `YOLO_IMGSZ` | YOLO adapter | Ultralytics inference/letterbox size, not camera resolution. | Lower for speed, raise for accuracy only after measuring FPS. |
 | `YOLO_GATE_CLASS_NAMES` | YOLO adapter | Accepted class labels. For the current model this must include `Goals-Detection`. | Update after checking model metadata or `data.yaml`. |
@@ -232,6 +260,22 @@ changing it.
 | `WEBOTS_CAMERA_IDLE_RECONNECT` | Webots camera client | Watchdog for a connected socket that stops sending bytes. Avoids reconnect loops on normal short timeouts. | Increase if a slow Webots run reports idle reconnects despite a valid stream. |
 | `WEBOTS_DETECTION_STALE` | Webots YOLO provider | Maximum age for reusing the latest background YOLO result. Bridges camera/model FPS to the mission loop before mission validation. | Increase slightly for slow inference; keep `MISSION_MAX_DETECTION_AGE` aligned or higher enough for the mission to accept it. |
 | `WEBOTS_DIAGNOSTICS_WINDOW` | Webots YOLO provider | Enables OpenCV overlay for class labels, candidate reasons, ROI, area guides, and clearance box. | Keep `1` during simulation tuning; disable for headless runs. |
+
+### Raspberry Pi OpenCV Camera
+
+These variables affect only `DETECTOR="opencv-yolo"`. They should live in
+`configs/raspi_runtime.env`, not `configs/autonomy_runtime.env`.
+
+| Variable | Used by | Purpose and rationale | Tune when |
+| --- | --- | --- | --- |
+| `OPENCV_CAMERA_SOURCE` | OpenCV camera source | Camera index or device path for C920, for example `0` or `/dev/video0`. | Change when the C920 enumerates as a different device. |
+| `OPENCV_CAMERA_BACKEND` | OpenCV camera source | Capture backend. Use `v4l2` on Raspberry Pi OS when using `/dev/video*`; use `default` for generic OpenCV behavior. | Change only if the camera fails to open or backend-specific behavior is needed. |
+| `OPENCV_CAMERA_WIDTH/HEIGHT` | OpenCV camera source and visual tuning contract | Requested camera frame size. The driver may choose a different actual size, so verify diagnostics before tuning. | Change when using a different C920 mode. Keep `VISUAL_FRAME_WIDTH/HEIGHT` aligned with the actual frame. |
+| `OPENCV_CAMERA_FPS` | OpenCV camera source | Requested capture FPS. This is not YOLO FPS. | Lower if USB/CPU load is unstable; raise only after inference latency is measured. |
+| `OPENCV_CAMERA_READ_TIMEOUT` | OpenCV YOLO provider | Wait interval while no OpenCV frame is available. | Increase slightly if logs show repeated camera wait messages while the camera is healthy. |
+| `OPENCV_CAMERA_OPEN_RETRY` | OpenCV camera source | Seconds between reopen attempts after camera open failure. | Increase if the camera takes longer to appear during boot. |
+| `OPENCV_DETECTION_STALE` | OpenCV YOLO provider | Maximum age for reusing the newest C920 YOLO result. | Keep aligned with measured inference latency and `MISSION_MAX_DETECTION_AGE`. |
+| `OPENCV_DIAGNOSTICS_WINDOW` | OpenCV YOLO provider | Enables the same diagnostics overlay for C920 frames. | Keep `1` until camera/model/selector behavior is verified on the Pi. |
 
 ### Gate Target Selector
 

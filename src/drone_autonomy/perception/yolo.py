@@ -71,7 +71,7 @@ class YoloGateDetector:
     """Convert YOLO model output into the repository `GateDetection` contract.
 
     This class has no MAVLink or mission dependency. It can be reused by Webots
-    simulation and by a future Raspberry Pi camera adapter.
+    simulation and by the Raspberry Pi/OpenCV camera adapter.
     """
 
     def __init__(self, config: YoloGateConfig, model: Any | None = None) -> None:

@@ -22,6 +22,13 @@ Mode yang tersedia:
 - `listen`: print raw MAVLink messages.
 - `autonomy`: jalankan runtime loop.
 
+Detector mode yang tersedia:
+
+- `none`: tidak ada deteksi, aman untuk MAVLink dry-run.
+- `synthetic`: fake gate untuk wiring SITL.
+- `webots-yolo`: Webots TCP camera stream untuk simulasi.
+- `opencv-yolo`: OpenCV/C920 frame source untuk Raspberry Pi dry-run.
+
 ## Runtime Loop
 
 Source:
@@ -35,6 +42,7 @@ Loop utama melakukan ini setiap tick:
 ```text
 drain MAVLink messages
 -> update telemetry adapter
+-> update command ACK tracker
 -> get latest gate detection
 -> build MissionTelemetry
 -> mission.update(telemetry)
@@ -141,6 +149,9 @@ Responsibilities:
 - Convert `VehicleCommand.takeoff()` to takeoff command.
 - Convert `VehicleCommand.land()` to land command.
 - Convert body velocity command to `SET_POSITION_TARGET_LOCAL_NED`.
+- Track `COMMAND_ACK` for mission `COMMAND_LONG` commands:
+  arm/disarm, takeoff, and land.
+- Retry tracked commands on ACK timeout and report failures to the runtime.
 
 Internal velocity convention:
 
@@ -150,6 +161,18 @@ body_vy_m_s > 0: right
 body_vz_m_s > 0: down
 yaw_rate_rad_s > 0: yaw right/clockwise
 ```
+
+ACK scope:
+
+```text
+ACK tracked: arm/disarm, takeoff, land
+ACK ignored as setup: telemetry message interval requests
+No ACK expected: body velocity setpoint stream
+Mode validation: heartbeat mode telemetry after pymavlink set_mode()
+```
+
+If tracked ACK fails, the runtime sends a hold command when command sending is
+enabled and exits fail-closed.
 
 ## Detector Layer
 
@@ -175,6 +198,17 @@ webots/worlds/iris_camera.wbt
 -> MissionTelemetry.gate_detection
 ```
 
+Implemented C920/OpenCV plus YOLO dry-run detector path:
+
+```text
+Logitech C920 / OpenCV device
+-> src/drone_autonomy/perception/opencv_camera.py
+-> src/drone_autonomy/perception/yolo.py
+-> src/drone_autonomy/perception/target_selector.py
+-> GateDetection
+-> MissionTelemetry.gate_detection
+```
+
 `YoloGateDetector` extracts class-filtered raw candidates. `GateTargetSelector`
 validates geometry and hollow-gate appearance, scores candidates, tracks the
 previous target, smooths the selected bbox, and only then publishes a
@@ -193,8 +227,8 @@ scripts/run_iris_camera_yolo.sh
 
 This repo's `iris_camera.wbt` profile requests `rgb24` from the vendored Webots
 controller. `gray8` is still supported only for upstream-compatible fallback
-worlds. A future real-hardware path should replace only the frame source with a
-C920/OpenCV adapter.
+worlds. The Raspberry Pi `opencv-yolo` path replaces only the frame source with
+OpenCV/C920; target selection and mission logic stay shared with simulation.
 
 The detector must not command the drone.
 
@@ -209,6 +243,14 @@ src/drone_autonomy/cli.py
 `--connection` selects the MAVLink endpoint. `--baud` is passed to pymavlink
 for serial endpoints such as `/dev/ttyACM0`; UDP SITL endpoints ignore that
 setting.
+
+`MAVLINK_HEARTBEAT_STALE` and `MAVLINK_LOCAL_POSITION_STALE` are runtime
+fail-closed guards. If either telemetry stream is stale, the runtime does not
+advance mission logic with old data.
+
+`COMMAND_ACK_REQUIRED`, `COMMAND_ACK_TIMEOUT`, and
+`COMMAND_ACK_MAX_RETRIES` configure retry/fail-closed behavior for tracked
+mission `COMMAND_LONG` commands. They do not affect velocity setpoints.
 
 Runtime shell env example:
 
@@ -272,5 +314,5 @@ are explicitly set into `src/drone_autonomy/cli.py`.
 
 `scripts/run_raspi_hardware.sh` reuses the same generic runner with
 `AUTONOMY_ENV_FILE=configs/raspi_runtime.env` when present. It defaults to
-dry-run and `DETECTOR="none"` until a real C920/OpenCV detector mode is
-implemented.
+dry-run and `DETECTOR="none"` until the operator validates the C920/OpenCV
+`opencv-yolo` path in local diagnostics.

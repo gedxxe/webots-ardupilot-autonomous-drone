@@ -5,7 +5,7 @@ import socket
 import struct
 from time import monotonic
 
-from drone_autonomy.perception.frames import CameraFrame
+from drone_autonomy.perception.frames import CameraFrame, CameraSourceStatus
 
 
 @dataclass(frozen=True)
@@ -42,18 +42,13 @@ class WebotsCameraConfig:
 
 
 @dataclass(frozen=True)
-class WebotsCameraStatus:
+class WebotsCameraStatus(CameraSourceStatus):
     """Last observed TCP camera stream state for runtime diagnostics.
 
     Detection code should not branch mission behavior on this status. It exists
     so SITL runs can distinguish a missing Webots listener from a slow/partial
     frame or an invalid stream payload.
     """
-
-    stage: str = "not_started"
-    detail: str = "camera client has not attempted a read yet"
-    connected: bool = False
-    buffered_bytes: int = 0
 
 
 def decode_webots_camera_payload(

@@ -6,7 +6,7 @@ from time import monotonic
 from typing import Protocol
 
 from drone_autonomy.perception.detections import GateDetection
-from drone_autonomy.perception.frames import CameraFrame
+from drone_autonomy.perception.frames import CameraFrame, CameraSourceStatus
 from drone_autonomy.perception.target_selector import (
     CandidateEvaluation,
     GateCandidate,
@@ -17,7 +17,6 @@ from drone_autonomy.perception.target_selector import (
 )
 from drone_autonomy.perception.webots_camera import (
     WebotsCameraConfig,
-    WebotsCameraStatus,
     WebotsTcpCameraClient,
 )
 from drone_autonomy.perception.yolo import YoloGateConfig, YoloGateDetector
@@ -25,12 +24,19 @@ from drone_autonomy.perception.yolo import YoloGateConfig, YoloGateDetector
 
 @dataclass(frozen=True)
 class WebotsYoloConfig:
-    """Config for the Webots camera plus YOLO perception pipeline."""
+    """Config for a camera-source plus YOLO perception pipeline.
+
+    The class name is kept for compatibility with the original Webots path, but
+    the provider can also use an injected OpenCV camera source.
+    """
 
     camera: WebotsCameraConfig
     yolo: YoloGateConfig
     selector: GateTargetSelectorConfig = field(default_factory=GateTargetSelectorConfig)
     detection_stale_s: float = 0.25
+    pipeline_name: str = "webots-yolo"
+    camera_wait_source: str = ""
+    camera_read_timeout_s: float = 0.0
     diagnostics_window: bool = False
     diagnostics_window_name: str = "Webots YOLO Gate Diagnostics"
     diagnostics_pass_target_offset_x: float = 0.0
@@ -45,6 +51,10 @@ class WebotsYoloConfig:
     def __post_init__(self) -> None:
         if self.detection_stale_s <= 0.0:
             raise ValueError("detection_stale_s must be positive")
+        if not self.pipeline_name:
+            raise ValueError("pipeline_name must not be empty")
+        if self.camera_read_timeout_s < 0.0:
+            raise ValueError("camera_read_timeout_s must be non-negative")
         if not self.diagnostics_window_name:
             raise ValueError("diagnostics_window_name must not be empty")
         clearance_values = (
@@ -64,7 +74,7 @@ class WebotsYoloConfig:
 class CameraFrameSource(Protocol):
     """Thread-owned source that reads camera frames from simulator/hardware."""
 
-    last_status: WebotsCameraStatus
+    last_status: CameraSourceStatus
 
     def read_latest(self, observed_at_s: float) -> CameraFrame | None:
         """Return a frame, or `None` while the stream is not ready."""
@@ -85,12 +95,12 @@ class FrameGateDetector(Protocol):
 
 
 class WebotsYoloGateProvider:
-    """Run Webots camera ingestion and YOLO inference in background workers.
+    """Run camera ingestion and YOLO inference in background workers.
 
-    The mission loop must not block on TCP reads or YOLO inference. This provider
-    therefore owns two bounded-latest workers:
+    The mission loop must not block on camera reads or YOLO inference. This
+    provider therefore owns two bounded-latest workers:
 
-    - camera worker: reads Webots TCP frames and publishes only the newest frame.
+    - camera worker: reads frames and publishes only the newest frame.
     - detector worker: consumes the newest frame and publishes the newest
       `GateDetection | None`.
 
@@ -129,12 +139,12 @@ class WebotsYoloGateProvider:
 
         self._camera_thread = Thread(
             target=self._camera_worker,
-            name="webots-camera-reader",
+            name=f"{config.pipeline_name}-camera-reader",
             daemon=True,
         )
         self._detector_thread = Thread(
             target=self._detector_worker,
-            name="webots-yolo-detector",
+            name=f"{config.pipeline_name}-detector",
             daemon=True,
         )
         self._camera_thread.start()
@@ -178,7 +188,7 @@ class WebotsYoloGateProvider:
         while not self._stop_event.is_set():
             frame = self.camera.read_latest(observed_at_s=monotonic())
             if frame is None:
-                self._stop_event.wait(self.config.camera.read_timeout_s)
+                self._stop_event.wait(self._camera_read_timeout_s())
                 continue
 
             with self._lock:
@@ -188,9 +198,10 @@ class WebotsYoloGateProvider:
 
             self._frame_ready_event.set()
             if not self._camera_ready_announced:
+                prefix = f"{self.config.pipeline_name} camera frame ready "
                 print(
-                    "webots-yolo camera frame ready "
-                    f"{frame.width_px}x{frame.height_px} encoding={frame.encoding}"
+                    f"{prefix}{frame.width_px}x{frame.height_px} "
+                    f"encoding={frame.encoding}"
                 )
                 self._camera_ready_announced = True
 
@@ -220,7 +231,7 @@ class WebotsYoloGateProvider:
                 candidates = ()
                 now_s = monotonic()
                 if now_s - self._last_detector_error_s >= 2.0:
-                    print(f"webots-yolo detector error: {exc}")
+                    print(f"{self.config.pipeline_name} detector error: {exc}")
                     self._last_detector_error_s = now_s
             raw_prediction_summary = _format_raw_prediction_summary(
                 getattr(self.detector, "last_raw_predictions", ())
@@ -253,12 +264,20 @@ class WebotsYoloGateProvider:
             return
 
         status = self.camera.last_status
+        source = self.config.camera_wait_source
+        if not source:
+            source = f"tcp://{self.config.camera.host}:{self.config.camera.port}"
         print(
-            "webots-yolo waiting for camera frame "
-            f"tcp://{self.config.camera.host}:{self.config.camera.port} "
+            f"{self.config.pipeline_name} waiting for camera frame "
+            f"{source} "
             f"status={status.stage} detail={status.detail}"
         )
         self._last_camera_warning_s = now_s
+
+    def _camera_read_timeout_s(self) -> float:
+        if self.config.camera_read_timeout_s > 0.0:
+            return self.config.camera_read_timeout_s
+        return self.config.camera.read_timeout_s
 
     def _show_diagnostics(
         self,
@@ -273,7 +292,7 @@ class WebotsYoloGateProvider:
             import cv2
             import numpy as np
         except ModuleNotFoundError as exc:  # pragma: no cover - environment guard
-            print(f"webots-yolo diagnostics disabled: {exc}")
+            print(f"{self.config.pipeline_name} diagnostics disabled: {exc}")
             self._diagnostics_disabled = True
             return
 
@@ -373,7 +392,7 @@ class WebotsYoloGateProvider:
             cv2.imshow(self.config.diagnostics_window_name, canvas)
             cv2.waitKey(1)
         except Exception as exc:  # pragma: no cover - GUI/runtime dependent
-            print(f"webots-yolo diagnostics disabled: {exc}")
+            print(f"{self.config.pipeline_name} diagnostics disabled: {exc}")
             self._diagnostics_disabled = True
 
     def _draw_validator_roi(
