@@ -138,7 +138,7 @@ $$
 D(e,\delta)=
 \begin{cases}
 0, & |e| \le \delta \\
-e - \operatorname{sgn}(e)\delta, & |e| > \delta
+e - \mathrm{sgn}(e)\delta, & |e| > \delta
 \end{cases}
 $$
 
@@ -158,7 +158,7 @@ Before command filtering, the lateral, vertical, and yaw corrections are:
 
 $$
 v_y =
-\operatorname{clip}
+\mathrm{clip}
 \left(
 k_y D(\tilde{e}_x,\delta_x),
 -v_{y,max},
@@ -168,7 +168,7 @@ $$
 
 $$
 v_z =
-\operatorname{clip}
+\mathrm{clip}
 \left(
 k_z D(\tilde{e}_y,\delta_y),
 -v_{z,max},
@@ -178,7 +178,7 @@ $$
 
 $$
 \omega_z =
-\operatorname{clip}
+\mathrm{clip}
 \left(
 k_{\psi} D(\tilde{e}_x,\delta_x),
 -\omega_{max},
@@ -282,7 +282,7 @@ S_p = p
 $$
 
 $$
-S_l = \operatorname{IoU}(B_{previous}, B_{current})
+S_l = \mathrm{IoU}(B_{previous}, B_{current})
 $$
 
 $$
@@ -419,7 +419,7 @@ $$
 
 $$
 v_z^{alt} =
-\operatorname{clip}
+\mathrm{clip}
 \left(
 -k_h D(e_h,\delta_h),
 -v_{climb,max},
