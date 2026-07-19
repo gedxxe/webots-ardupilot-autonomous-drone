@@ -153,6 +153,16 @@ _ENV_TO_FIELD: dict[str, tuple[str, _Parser]] = {
     "GATE_SELECTOR_APPEARANCE_WEIGHT": ("gate_selector_appearance_weight", float),
     "GATE_SELECTOR_STABLE_WINDOW": ("gate_selector_stable_window_frames", int),
     "GATE_SELECTOR_REQUIRED_STABLE": ("gate_selector_required_stable_frames", int),
+    "MISSION_TAKEOFF_ALTITUDE": ("mission_takeoff_altitude_m", float),
+    "MISSION_TAKEOFF_SETTLE_TOLERANCE": (
+        "mission_takeoff_settle_tolerance_m",
+        float,
+    ),
+    "MISSION_TAKEOFF_STABLE_TICKS": (
+        "mission_takeoff_required_stable_ticks",
+        int,
+    ),
+    "MISSION_TAKEOFF_TIMEOUT": ("mission_takeoff_timeout_s", float),
     "MISSION_MAX_DETECTION_AGE": ("mission_max_detection_age_s", float),
     "MISSION_REQUIRED_DETECTION_TICKS": ("mission_required_detection_ticks", int),
     "MISSION_CENTER_DWELL": ("mission_center_dwell_s", float),
@@ -190,6 +200,36 @@ _ENV_TO_FIELD: dict[str, tuple[str, _Parser]] = {
     ),
     "MISSION_FINAL_EXIT_DISTANCE": ("mission_final_exit_distance_m", float),
     "MISSION_FINAL_EXIT_SPEED": ("mission_final_exit_speed_m_s", float),
+    "MISSION_MIN_CENTERING_ALTITUDE": (
+        "mission_min_centering_altitude_m",
+        float,
+    ),
+    "MISSION_MAX_CENTERING_ALTITUDE": (
+        "mission_max_centering_altitude_m",
+        float,
+    ),
+    "MISSION_ALTITUDE_HOLD_ENABLED": (
+        "mission_altitude_hold_enabled",
+        _parse_bool,
+    ),
+    "MISSION_ALTITUDE_HOLD_DEADBAND": (
+        "mission_altitude_hold_deadband_m",
+        float,
+    ),
+    "MISSION_ALTITUDE_HOLD_KP": ("mission_altitude_hold_kp", float),
+    "MISSION_ALTITUDE_HOLD_MAX_CLIMB_SPEED": (
+        "mission_altitude_hold_max_climb_m_s",
+        float,
+    ),
+    "MISSION_ALTITUDE_HOLD_MAX_DESCENT_SPEED": (
+        "mission_altitude_hold_max_descent_m_s",
+        float,
+    ),
+    "MISSION_LANDING_COMPLETE_ALTITUDE": (
+        "mission_landing_complete_altitude_m",
+        float,
+    ),
+    "MISSION_TIMEOUT": ("mission_timeout_s", float),
     "VISUAL_FRAME_WIDTH": ("visual_frame_width_px", int),
     "VISUAL_FRAME_HEIGHT": ("visual_frame_height_px", int),
     "VISUAL_MIN_CONFIDENCE": ("visual_min_confidence", float),

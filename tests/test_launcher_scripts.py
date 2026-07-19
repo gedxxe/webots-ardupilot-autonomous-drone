@@ -14,6 +14,19 @@ def test_iris_camera_wrapper_only_selects_profile() -> None:
     assert "VISUAL_MAX_FORWARD_SPEED" not in script
 
 
+def test_iris_camera_world_has_explicit_stream_contract() -> None:
+    world = (REPO_ROOT / "webots" / "worlds" / "iris_camera.wbt").read_text()
+
+    assert '"--camera"' in world
+    assert 'name "camera"' in world
+    assert '"--camera-port"' in world
+    assert '"5599"' in world
+    assert '"--camera-format"' in world
+    assert '"rgb24"' in world
+    assert "width 640" in world
+    assert "height 480" in world
+
+
 def test_generic_runner_has_no_duplicated_shell_default_table() -> None:
     script = (REPO_ROOT / "scripts" / "run_autonomy_sitl.sh").read_text()
 
@@ -30,6 +43,11 @@ def test_generic_runner_has_no_duplicated_shell_default_table() -> None:
     assert "OPENCV_CAMERA_SOURCE" in script
     assert "append_arg_if_nonempty --opencv-camera-source OPENCV_CAMERA_SOURCE" in script
     assert "--opencv-diagnostics-window" in script
+    assert "parse_bool_setting" in script
+    assert "append_bool_flag WEBOTS_DIAGNOSTICS_WINDOW" in script
+    assert "append_bool_flag SEND_COMMANDS --send-commands" in script
+    assert "APPEND_BOOL_ENABLED" not in script
+    assert "/media/gedxxe/" not in script
 
 
 def test_raspi_hardware_wrapper_is_dry_run_scaffold() -> None:
@@ -45,6 +63,7 @@ def test_ncnn_export_helper_documents_generated_model_target() -> None:
     script = (REPO_ROOT / "scripts" / "export_yolo_ncnn.py").read_text()
 
     assert '"format": "ncnn"' in script
+    assert 'task="detect"' in script
     assert "models/gate_yolov8n_best.pt" in script
     assert "YOLO_MODEL_PATH" in script
 
@@ -64,6 +83,16 @@ def test_opencv_yolo_probe_reuses_runtime_pipeline() -> None:
     assert "WebotsYoloGateProvider" in script
     assert "GateTargetSelectorConfig" in script
     assert "MAVLink" in script
+
+
+def test_runtime_checks_yolo_provider_health_before_mission_update() -> None:
+    runtime = (
+        REPO_ROOT / "src" / "drone_autonomy" / "runtime" / "autonomy_loop.py"
+    ).read_text(encoding="utf-8")
+
+    assert "yolo_gate.stale_reason(loop_started_s)" in runtime
+    assert "fail-closed waiting for fresh perception" in runtime
+    assert 'VehicleCommand.land(f"fail-closed: {timeout_reason}")' in runtime
 
 
 def test_preflight_check_is_offline_tooling() -> None:

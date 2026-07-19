@@ -101,8 +101,18 @@ class GateMissionConfig:
             raise ValueError("takeoff_settle_tolerance_m must be non-negative")
         if self.takeoff_required_stable_ticks < 1:
             raise ValueError("takeoff_required_stable_ticks must be at least 1")
+        if self.takeoff_timeout_s <= 0.0:
+            raise ValueError("takeoff_timeout_s must be positive")
+        if self.gate_pass_distance_m < 0.0:
+            raise ValueError("gate_pass_distance_m must be non-negative")
+        if self.gate_pass_speed_m_s < 0.0:
+            raise ValueError("gate_pass_speed_m_s must be non-negative")
+        if self.next_gate_acquire_speed_m_s < 0.0:
+            raise ValueError("next_gate_acquire_speed_m_s must be non-negative")
         if self.final_exit_distance_m < 0.0:
             raise ValueError("final_exit_distance_m must be non-negative")
+        if self.final_exit_speed_m_s < 0.0:
+            raise ValueError("final_exit_speed_m_s must be non-negative")
         if self.next_gate_acquire_max_distance_m < 0.0:
             raise ValueError("next_gate_acquire_max_distance_m must be non-negative")
         if self.next_gate_acquire_min_clear_distance_m < 0.0:
@@ -122,6 +132,25 @@ class GateMissionConfig:
             )
         if self.next_gate_acquire_timeout_s < 0.0:
             raise ValueError("next_gate_acquire_timeout_s must be non-negative")
+        if self.min_centering_altitude_m < 0.0:
+            raise ValueError("min_centering_altitude_m must be non-negative")
+        if self.max_centering_altitude_m <= self.min_centering_altitude_m:
+            raise ValueError(
+                "max_centering_altitude_m must be greater than "
+                "min_centering_altitude_m"
+            )
+        if self.altitude_hold_deadband_m < 0.0:
+            raise ValueError("altitude_hold_deadband_m must be non-negative")
+        if self.altitude_hold_kp < 0.0:
+            raise ValueError("altitude_hold_kp must be non-negative")
+        if self.altitude_hold_max_climb_m_s < 0.0:
+            raise ValueError("altitude_hold_max_climb_m_s must be non-negative")
+        if self.altitude_hold_max_descent_m_s < 0.0:
+            raise ValueError("altitude_hold_max_descent_m_s must be non-negative")
+        if self.landing_complete_altitude_m < 0.0:
+            raise ValueError("landing_complete_altitude_m must be non-negative")
+        if self.mission_timeout_s <= 0.0:
+            raise ValueError("mission_timeout_s must be positive")
 
 
 @dataclass(frozen=True)

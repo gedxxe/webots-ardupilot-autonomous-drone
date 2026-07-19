@@ -24,7 +24,7 @@ def _csv_ints(value: str) -> tuple[int, ...]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI used for both MAVLink smoke tests and autonomy runtime."""
+    """Build the CLI used for MAVLink checks and the autonomy runtime."""
 
     parser = argparse.ArgumentParser(
         prog="drone-autonomy",
@@ -97,12 +97,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--detector",
         choices=["none", "synthetic", "webots-yolo", "opencv-yolo"],
-        default="none",
+        default=_RUNTIME_DEFAULTS.detector,
         help="Detection source for autonomy mode.",
     )
     parser.add_argument(
         "--send-commands",
         action="store_true",
+        default=_RUNTIME_DEFAULTS.send_commands,
         help="Actually send MAVLink motion commands in autonomy mode.",
     )
     parser.add_argument(
@@ -305,6 +306,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Required valid frames inside the selector stability window.",
     )
     parser.add_argument(
+        "--mission-takeoff-altitude",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_takeoff_altitude_m,
+        help="ArduPilot guided-takeoff target altitude in meters.",
+    )
+    parser.add_argument(
+        "--mission-takeoff-settle-tolerance",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_takeoff_settle_tolerance_m,
+        help="Altitude error band accepted while confirming takeoff stability.",
+    )
+    parser.add_argument(
+        "--mission-takeoff-stable-ticks",
+        type=int,
+        default=_RUNTIME_DEFAULTS.mission_takeoff_required_stable_ticks,
+        help="Consecutive stable telemetry ticks required after takeoff.",
+    )
+    parser.add_argument(
+        "--mission-takeoff-timeout",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_takeoff_timeout_s,
+        help="Seconds allowed for ArduPilot-managed takeoff before failsafe.",
+    )
+    parser.add_argument(
         "--mission-max-detection-age",
         type=float,
         default=_RUNTIME_DEFAULTS.mission_max_detection_age_s,
@@ -420,6 +445,60 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=_RUNTIME_DEFAULTS.mission_final_exit_speed_m_s,
         help="Forward body speed during the final exit segment.",
+    )
+    parser.add_argument(
+        "--mission-min-centering-altitude",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_min_centering_altitude_m,
+        help="Lower altitude guard applied to camera vertical centering commands.",
+    )
+    parser.add_argument(
+        "--mission-max-centering-altitude",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_max_centering_altitude_m,
+        help="Upper altitude guard applied to camera vertical centering commands.",
+    )
+    parser.add_argument(
+        "--mission-altitude-hold-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=_RUNTIME_DEFAULTS.mission_altitude_hold_enabled,
+        help="Enable companion altitude bias outside visual centering and brake.",
+    )
+    parser.add_argument(
+        "--mission-altitude-hold-deadband",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_altitude_hold_deadband_m,
+        help="Altitude error deadband for companion velocity bias.",
+    )
+    parser.add_argument(
+        "--mission-altitude-hold-kp",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_altitude_hold_kp,
+        help="Proportional gain for companion altitude velocity bias.",
+    )
+    parser.add_argument(
+        "--mission-altitude-hold-max-climb-speed",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_altitude_hold_max_climb_m_s,
+        help="Maximum climb correction speed from companion altitude hold.",
+    )
+    parser.add_argument(
+        "--mission-altitude-hold-max-descent-speed",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_altitude_hold_max_descent_m_s,
+        help="Maximum descent correction speed from companion altitude hold.",
+    )
+    parser.add_argument(
+        "--mission-landing-complete-altitude",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_landing_complete_altitude_m,
+        help="Fallback altitude threshold used with landed telemetry.",
+    )
+    parser.add_argument(
+        "--mission-timeout",
+        type=float,
+        default=_RUNTIME_DEFAULTS.mission_timeout_s,
+        help="Mission-state timeout before fail-closed landing.",
     )
     parser.add_argument(
         "--visual-frame-width",
@@ -629,6 +708,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 gate_selector_appearance_weight=args.gate_selector_appearance_weight,
                 gate_selector_stable_window_frames=args.gate_selector_stable_window,
                 gate_selector_required_stable_frames=args.gate_selector_required_stable,
+                mission_takeoff_altitude_m=args.mission_takeoff_altitude,
+                mission_takeoff_settle_tolerance_m=(
+                    args.mission_takeoff_settle_tolerance
+                ),
+                mission_takeoff_required_stable_ticks=(
+                    args.mission_takeoff_stable_ticks
+                ),
+                mission_takeoff_timeout_s=args.mission_takeoff_timeout,
                 mission_max_detection_age_s=args.mission_max_detection_age,
                 mission_required_detection_ticks=args.mission_required_detection_ticks,
                 mission_center_dwell_s=args.mission_center_dwell,
@@ -660,6 +747,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mission_brake_altitude_hold_enabled=args.mission_brake_altitude_hold,
                 mission_final_exit_distance_m=args.mission_final_exit_distance,
                 mission_final_exit_speed_m_s=args.mission_final_exit_speed,
+                mission_min_centering_altitude_m=(
+                    args.mission_min_centering_altitude
+                ),
+                mission_max_centering_altitude_m=(
+                    args.mission_max_centering_altitude
+                ),
+                mission_altitude_hold_enabled=args.mission_altitude_hold_enabled,
+                mission_altitude_hold_deadband_m=args.mission_altitude_hold_deadband,
+                mission_altitude_hold_kp=args.mission_altitude_hold_kp,
+                mission_altitude_hold_max_climb_m_s=(
+                    args.mission_altitude_hold_max_climb_speed
+                ),
+                mission_altitude_hold_max_descent_m_s=(
+                    args.mission_altitude_hold_max_descent_speed
+                ),
+                mission_landing_complete_altitude_m=(
+                    args.mission_landing_complete_altitude
+                ),
+                mission_timeout_s=args.mission_timeout,
                 visual_frame_width_px=args.visual_frame_width,
                 visual_frame_height_px=args.visual_frame_height,
                 visual_min_confidence=args.visual_min_confidence,

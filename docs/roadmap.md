@@ -21,6 +21,8 @@
 - Done: guided mode, arm, takeoff, land, and body-frame velocity command helpers.
 - Done: `COMMAND_ACK` parsing, retry policy, and command timeout handling for
   tracked mission `COMMAND_LONG` commands: arm/disarm, takeoff, and land.
+- Done: accepted tracked commands are latched by exact command identity so
+  repeated mission output does not resend takeoff/arm/land after acceptance.
 - Pending: hardware validation of ACK behavior over the real Pixhawk serial
   path.
 - Pending: optional `set_mode` ACK tracking. Current validation is telemetry
@@ -33,6 +35,9 @@
 - Done: adaptive next-gate acquire and brake-before-center.
 - Done: MAVLink heartbeat and local-position stale guards fail closed before
   mission updates.
+- Done: camera-frame and inference-progress stale guards pause mission updates
+  and command hold without confusing a healthy no-candidate frame with a dead
+  perception pipeline.
 - Pending: full lost-heartbeat field failsafe policy with operator procedure.
 - Pending: automatic course-frame calibration.
 
@@ -46,6 +51,8 @@
   viewpoint and lighting.
 - Pending: custom two-gate Webots world and gate assets.
 - Done: true RGB Webots stream for the current `iris_camera.wbt` profile.
+- Done: OpenCV diagnostics overlays use background inference but keep HighGUI
+  event processing and window cleanup on the runtime main thread.
 - Done: real C920/OpenCV camera source for dry-run perception.
 - Pending: validate C920/OpenCV behavior on Raspberry Pi 5 hardware.
 

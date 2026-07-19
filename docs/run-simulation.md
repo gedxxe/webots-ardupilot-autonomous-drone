@@ -225,6 +225,27 @@ not use them to hide a camera/config mismatch. First confirm diagnostics show
 `frame 640x480 rgb8` and that the `raw=...` line says the model itself is
 emitting `3:Goals-Detection` for the false object.
 
+Takeoff and fused-altitude safety:
+
+```text
+MISSION_TAKEOFF_ALTITUDE
+MISSION_TAKEOFF_SETTLE_TOLERANCE
+MISSION_TAKEOFF_STABLE_TICKS
+MISSION_TAKEOFF_TIMEOUT
+MISSION_MIN_CENTERING_ALTITUDE
+MISSION_MAX_CENTERING_ALTITUDE
+MISSION_ALTITUDE_HOLD_ENABLED
+MISSION_ALTITUDE_HOLD_DEADBAND
+MISSION_ALTITUDE_HOLD_KP
+MISSION_ALTITUDE_HOLD_MAX_CLIMB_SPEED
+MISSION_ALTITUDE_HOLD_MAX_DESCENT_SPEED
+MISSION_LANDING_COMPLETE_ALTITUDE
+MISSION_TIMEOUT
+```
+
+These values consume fused `LOCAL_POSITION_NED` altitude. Python does not blend
+raw GPS, rangefinder, or optical-flow measurements.
+
 Gate pass and gate-2 acquire:
 
 ```text

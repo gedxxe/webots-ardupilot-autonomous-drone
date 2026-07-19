@@ -61,6 +61,9 @@ def main() -> int:
             fps=args.fps,
         )
     )
+    selected_count = 0
+    start_s = monotonic()
+    next_status_s = start_s
     provider = WebotsYoloGateProvider(
         WebotsYoloConfig(
             camera=WebotsCameraConfig(read_timeout_s=0.05, idle_reconnect_s=1.0),
@@ -83,17 +86,16 @@ def main() -> int:
         camera=camera,
     )
 
-    print(
-        "opencv_yolo_probe start "
-        f"source={args.source} backend={args.backend} "
-        f"model={args.model} names={args.gate_class_names} ids={args.gate_class_ids}"
-    )
-    selected_count = 0
-    start_s = monotonic()
-    next_status_s = start_s
     try:
+        print(
+            "opencv_yolo_probe start "
+            f"source={args.source} backend={args.backend} "
+            f"model={args.model} names={args.gate_class_names} "
+            f"ids={args.gate_class_ids}"
+        )
         while monotonic() - start_s <= args.timeout:
             now_s = monotonic()
+            provider.process_events()
             provider.update_context(phase="probe", gate_index=0)
             detection = provider.detect(now_s)
             if detection is not None:

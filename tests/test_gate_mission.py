@@ -98,6 +98,16 @@ def test_mission_requests_guided_then_arm_then_takeoff() -> None:
     assert output.command.altitude_m == mission.config.takeoff_altitude_m
 
 
+def test_mission_timeout_enters_failsafe_and_commands_land() -> None:
+    mission = GateAutonomyMission(GateMissionConfig(mission_timeout_s=1.0))
+
+    mission.update(telemetry(0.0, altitude_m=0.0))
+    output = mission.update(telemetry(1.1, altitude_m=0.5))
+
+    assert output.phase == MissionPhase.FAILSAFE
+    assert output.command.kind == CommandKind.LAND
+
+
 def test_takeoff_does_not_seek_while_landed_even_if_altitude_is_near_target() -> None:
     mission = GateAutonomyMission(
         GateMissionConfig(

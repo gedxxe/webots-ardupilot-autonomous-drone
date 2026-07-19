@@ -54,6 +54,8 @@ def run_preflight(
             )
         )
 
+    _validate_domain_configs(issues, config)
+
     if config.detector not in _DETECTOR_CHOICES:
         issues.append(
             PreflightIssue(
@@ -136,6 +138,24 @@ def has_blocking_errors(issues: tuple[PreflightIssue, ...]) -> bool:
     return any(issue.severity == "error" for issue in issues)
 
 
+def _validate_domain_configs(
+    issues: list[PreflightIssue],
+    config: AutonomyRuntimeConfig,
+) -> None:
+    """Reuse domain dataclass validation without opening runtime resources."""
+
+    builders = (
+        ("mission_config", config.mission_config),
+        ("visual_servo_config", config.visual_servo_config),
+        ("target_selector_config", config.target_selector_config),
+    )
+    for code, builder in builders:
+        try:
+            builder()
+        except ValueError as exc:
+            issues.append(PreflightIssue("error", f"{code}_invalid", str(exc)))
+
+
 def _validate_yolo_config(
     issues: list[PreflightIssue],
     config: AutonomyRuntimeConfig,
@@ -215,4 +235,3 @@ def _resolve_path(raw_path: str, repo_root: Path | None) -> Path:
 
 def _looks_like_hardware_connection(connection: str) -> bool:
     return connection.startswith("/dev/") or connection.upper().startswith("COM")
-

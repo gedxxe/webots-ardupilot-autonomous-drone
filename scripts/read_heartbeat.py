@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small MAVLink heartbeat smoke test."""
+"""Small MAVLink heartbeat connection check."""
 
 from drone_autonomy.cli import main
 

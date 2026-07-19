@@ -52,6 +52,10 @@ class VehicleCommand:
         return cls(kind=CommandKind.ARM, arm=True, reason=reason)
 
     @classmethod
+    def disarm_vehicle(cls, reason: str = "") -> VehicleCommand:
+        return cls(kind=CommandKind.ARM, arm=False, reason=reason)
+
+    @classmethod
     def takeoff(cls, altitude_m: float, reason: str = "") -> VehicleCommand:
         return cls(kind=CommandKind.TAKEOFF, altitude_m=altitude_m, reason=reason)
 

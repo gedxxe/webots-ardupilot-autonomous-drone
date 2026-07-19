@@ -11,6 +11,10 @@ Before changing tuning defaults or explaining tuning, read
 YOLO inference size, OpenCV overlay boxes, gate acquire thresholds, and visual
 servo gains.
 
+Keep `README.md` human-readable and operator-facing. Avoid marketing claims,
+AI-hype language, and uncommon internal labels where a clear phrase such as
+"connection check", "dry-run", or "diagnostics" is more useful.
+
 ## Project Intent
 
 Build a simple but robust autonomous drone pipeline for a two-gate task:
@@ -175,6 +179,9 @@ The first implementation uses image-based visual servoing:
   not as a flight launcher.
 - `AUTONOMY_LOG_JSONL` enables optional JSONL diagnostics. Logging must remain
   best-effort and must not change vehicle commands or mission transitions.
+- `MAX_RUNTIME` is a process safety bound. If it expires in command mode, the
+  runtime must send fail-closed land before shutting down; do not restore a
+  silent timeout exit that can leave the last mission state ambiguous.
 - `MAVLINK_BAUD` / `--baud` exists for serial hardware endpoints such as
   `/dev/ttyACM0` and `/dev/ttyACM1`. UDP SITL endpoints ignore this setting, so
   do not change simulation behavior when documenting or tuning baud.
@@ -182,6 +189,10 @@ The first implementation uses image-based visual servoing:
   `COMMAND_ACK_MAX_RETRIES` configure retry/fail-closed behavior for tracked
   mission `COMMAND_LONG` commands only. Current tracked commands are
   arm/disarm, guided takeoff, and land.
+- Mission outputs are level intents and can repeat for many ticks. After an
+  exact tracked command receives `MAV_RESULT_ACCEPTED`, the adapter must latch
+  that command identity and suppress retransmission. Retry only while ACK is
+  pending; do not restore periodic takeoff/arm/land sends after acceptance.
 - Do not claim velocity setpoints have `COMMAND_ACK`; body velocity is streamed
   through `SET_POSITION_TARGET_LOCAL_NED`.
 - Do not claim `set_mode()` ACK tracking is implemented. Mode entry is
@@ -203,6 +214,8 @@ The first implementation uses image-based visual servoing:
 - The production model runtime target is NCNN. `scripts/export_yolo_ncnn.py`
   prepares the generated NCNN directory from `models/gate_yolov8n_best.pt`;
   treat `models/*_ncnn_model/` as generated and ignored.
+- Keep the Ultralytics model task explicit as `detect` in both runtime loading
+  and NCNN export so directory-based backends do not rely on task guessing.
 - "Zero error tolerance" in this repo means fail-closed behavior: no fresh
   telemetry, stale camera/detection, empty class filter, missing ACK policy, or
   unset safety procedure must prevent motion commands instead of allowing an
@@ -230,6 +243,11 @@ The first implementation uses image-based visual servoing:
   blocking reads.
 - `WEBOTS_DETECTION_STALE` limits how long a background YOLO result can be
   reused by the mission loop.
+- The YOLO provider also exposes camera/inference progress health through the
+  same stale limit. Runtime must pause mission updates and command hold when a
+  worker stops or progress becomes stale. Do not collapse this into
+  `GateDetection | None`: a healthy no-candidate frame and a dead perception
+  pipeline require different behavior.
 - YOLO target selection intentionally prefers larger/nearer gate boxes over
   confidence-only selection, then uses center proximity and target-lock overlap.
 - If a non-gate object is shown as `cls=3:Goals-Detection`, treat it as a YOLO
@@ -245,9 +263,20 @@ The first implementation uses image-based visual servoing:
   candidates, selected target, hollow-gate appearance score, and area reference
   boxes for far/ready gates.
 - `WEBOTS_DIAGNOSTICS_WINDOW=1` enables the optional OpenCV diagnostics view.
+- OpenCV HighGUI/Qt calls (`imshow`, key/event polling, and window destruction)
+  belong to the runtime/main thread. The detector worker may build an overlay
+  buffer but must not own the GUI event loop. Keep graceful shutdown waiting for
+  an active inference to finish so native resources are not torn down underneath
+  a live worker.
+- OpenCV wheels may set `QT_QPA_FONTDIR` to a bundled directory that is absent.
+  Clear that override only when the directory does not exist so system
+  fontconfig can be used; do not hardcode a distro-specific font directory.
 - `VISUAL_FRAME_WIDTH=640` and `VISUAL_FRAME_HEIGHT=480` match the current
   `iris_camera.wbt` stream. If the camera resolution changes, update these
   runtime values before tuning gains.
+- Runtime mission/selector/visual defaults are derived from their domain
+  dataclasses. Keep operator overrides in `AutonomyRuntimeConfig` -> CLI/env
+  plumbing and avoid restoring duplicated numeric default tables.
 - `YOLO_IMGSZ=640` is Ultralytics inference/letterbox size, not camera
   resolution. Do not describe it as a 640x640 camera frame.
 - `docs/mathematical-foundations.md` documents the implemented equations for

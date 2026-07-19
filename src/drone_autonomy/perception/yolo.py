@@ -91,7 +91,7 @@ class YoloGateDetector:
                     "Ultralytics YOLO is required for --detector webots-yolo. "
                     "Install vision extras: pip install -e '.[vision]'"
                 ) from exc
-            model = YOLO(config.model_path)
+            model = YOLO(config.model_path, task="detect")
         self._model = model
 
     def detect(self, frame: CameraFrame | object, now_s: float) -> GateDetection | None:

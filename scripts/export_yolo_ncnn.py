@@ -54,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "pip install -e '.[vision]' ultralytics[export]"
         ) from exc
 
-    model = YOLO(str(model_path))
+    model = YOLO(str(model_path), task="detect")
     export_kwargs: dict[str, object] = {
         "format": "ncnn",
         "imgsz": args.imgsz,
@@ -71,7 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(f"NCNN export output is not a directory: {exported_path}")
 
     print(f"ncnn_export_ok path={exported_path}")
-    print("Use this directory as YOLO_MODEL_PATH after the C920 detector is implemented.")
+    print("Use this directory as YOLO_MODEL_PATH for opencv-yolo dry-run validation.")
     return 0
 
 

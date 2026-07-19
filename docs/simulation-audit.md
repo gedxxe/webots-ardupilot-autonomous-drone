@@ -27,7 +27,7 @@ Before `--send-commands`:
 
 - You are connected to SITL, not hardware.
 - Webots simulation is running.
-- Course direction `COURSE_FORWARD_X/Y` is understood or intentionally left at default for smoke testing.
+- Course direction `COURSE_FORWARD_X/Y` is understood or intentionally left at default for basic wiring checks.
 - You are ready to stop SITL/Webots if the vehicle moves incorrectly.
 
 ## Ready in Code
@@ -43,6 +43,8 @@ Before `--send-commands`:
 - Altitude-hold velocity bias from fused `LOCAL_POSITION_NED` altitude.
 - MAVLink telemetry adapter for heartbeat, arm state, landed state, altitude, and forward position.
 - MAVLink command adapter for mode, arm, takeoff, land, and body-frame velocity.
+- Accepted tracked MAVLink commands are suppressed on later mission ticks;
+  retries occur only while their ACK remains pending.
 - Runtime loop that can run dry or send commands.
 - Synthetic gate detector for SITL wiring tests that bypass real perception.
 - Webots TCP camera adapter for `iris_camera.wbt`.

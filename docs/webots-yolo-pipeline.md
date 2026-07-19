@@ -27,12 +27,20 @@ boundary is intentional so the same mission can also use the Raspberry Pi 5
 
 - Camera worker: owns the Webots TCP socket and publishes only the newest frame.
 - Detector worker: consumes the newest frame, runs YOLO, validates/tracks gate
-  candidates, and publishes only the newest selected `GateDetection | None`.
+  candidates, builds the optional diagnostics overlay, and publishes only the
+  newest selected `GateDetection | None`.
+- Runtime/main thread: displays the newest overlay and pumps OpenCV HighGUI/Qt
+  events. `imshow`, key polling, and window destruction must stay on this one
+  thread.
 
 This is a bounded-latest design. It intentionally drops old frames instead of
 building an unbounded queue, because drone control needs the newest perception
 more than old image history. The mission loop remains deterministic and
 single-threaded; it never blocks on TCP reads or YOLO inference.
+
+Shutdown waits for any in-progress detector invocation to finish before camera
+and HighGUI resources are released. This affects process shutdown only; it does
+not add inference blocking to mission ticks.
 
 Detection reuse is limited by:
 
@@ -41,7 +49,10 @@ WEBOTS_DETECTION_STALE="0.75"
 ```
 
 If the latest detection is older than this threshold, the mission receives
-`None` and continues its normal seek behavior.
+`None`. The provider separately reports camera/inference progress: if no new
+frame or completed inference arrives within the same threshold, runtime pauses
+mission updates and commands hold. A healthy processed frame with no gate
+candidate is not treated as a stalled pipeline.
 
 ## Current Webots Camera Source
 

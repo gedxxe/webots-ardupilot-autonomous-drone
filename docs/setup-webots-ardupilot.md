@@ -73,7 +73,7 @@ The companion app expects MAVLink telemetry on:
 udp:127.0.0.1:14551
 ```
 
-## Smoke Test
+## Connection Check
 
 ```bash
 drone-autonomy --connection udp:127.0.0.1:14551 --mode heartbeat

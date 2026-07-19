@@ -73,6 +73,7 @@ class MavlinkCommandAdapter:
         self.config = config or MavlinkCommandAdapterConfig()
         self._last_non_velocity_sent_s: dict[tuple[object, ...], float] = {}
         self._pending_acks: dict[tuple[object, ...], _PendingCommandAck] = {}
+        self._accepted_command_keys: set[tuple[object, ...]] = set()
         self._ack_events: list[CommandAckEvent] = []
         self._ack_failures: list[CommandAckEvent] = []
 
@@ -193,6 +194,10 @@ class MavlinkCommandAdapter:
             attempts=attempts,
         )
         if accepted:
+            # Mission outputs are level intents and may repeat for many ticks
+            # while telemetry catches up. Once ArduPilot accepts a specific
+            # COMMAND_LONG, do not turn that repeated intent into a new command.
+            self._accepted_command_keys.add(pending.key)
             self._ack_events.append(event)
         else:
             self._ack_failures.append(event)
@@ -369,8 +374,20 @@ class MavlinkCommandAdapter:
         param6: float = 0.0,
         param7: float = 0.0,
     ) -> bool:
+        if key in self._accepted_command_keys:
+            return False
         if key in self._pending_acks:
             return False
+        if self._pending_key_for_command(command_id) is not None:
+            return False
+
+        # A different command in the same family represents a new intent, for
+        # example disarm after arm or a deliberately changed takeoff altitude.
+        # Keep only the accepted identity that still matches the current intent.
+        family = key[0] if key else None
+        for accepted_key in tuple(self._accepted_command_keys):
+            if accepted_key and accepted_key[0] == family:
+                self._accepted_command_keys.discard(accepted_key)
         if self._skip_repeated(key, now_s):
             return False
 

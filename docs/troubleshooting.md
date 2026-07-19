@@ -103,7 +103,7 @@ Check these in order:
 3. Your user can read/write the device, or you are using the correct udev/dialout setup.
 4. `MAVLINK_BAUD` matches the ArduPilot serial setting. Start with `115200`.
 
-Smoke test:
+Connection check:
 
 ```bash
 drone-autonomy --mode heartbeat --connection /dev/ttyACM0 --baud 115200
@@ -185,7 +185,10 @@ Check:
 - ArduPilot accepted arm command.
 - MAVProxy console does not show prearm failures.
 - Runtime first prints `sent phase=takeoff ... cmd=takeoff`.
-- TAKEOFF remains on `cmd=takeoff` until fused altitude is stable near `1.0 m`.
+- After the accepted takeoff ACK, runtime prints
+  `suppressed phase=takeoff ... cmd=takeoff` while fused altitude settles near
+  `1.0 m`. The mission intent remains TAKEOFF, but no duplicate
+  `MAV_CMD_NAV_TAKEOFF` is transmitted.
 - ArduPilot accepts the guided takeoff command while armed.
 - Runtime does not print `fail-closed COMMAND_ACK failure ...`.
 
@@ -196,12 +199,18 @@ cmd=takeoff -> ArduPilot-managed target 1.0 m
 ```
 
 The mission intentionally does not send body-z velocity during TAKEOFF. If it
-stays on the ground and only prints repeated `cmd=takeoff`, check MAVProxy for
-prearm, mode, EKF, or command rejection messages before changing mission logic.
+stays on the ground after one accepted takeoff ACK, check MAVProxy and fused
+altitude telemetry for prearm, mode, EKF, or estimator problems before changing
+mission logic.
 
 The runtime tracks `COMMAND_ACK` for arm/disarm, takeoff, and land. If ArduPilot
 rejects one of those commands, the companion prints a fail-closed ACK reason
 instead of silently continuing.
+
+An accepted tracked command is one-shot for that exact command identity during
+the runtime. ACK timeout retries still occur only while the command is pending.
+This prevents the mission's repeated TAKEOFF output from sending a fresh
+takeoff command every status interval.
 
 ## Runtime prints `fail-closed COMMAND_ACK failure`
 
@@ -434,6 +443,27 @@ drone-autonomy --connection /dev/ttyACM0 --baud 115200 --mode listen --count 50
 If local position is missing, fix ArduPilot EKF/stream configuration before
 running autonomy.
 
+## Runtime prints `fail-closed waiting for fresh perception`
+
+The runtime has paused mission transitions because camera or inference progress
+is older than `WEBOTS_DETECTION_STALE` (simulation) or
+`OPENCV_DETECTION_STALE` (C920). This differs from a healthy frame with no gate
+candidate; ordinary no-detection frames still allow configured seek/acquire
+behavior.
+
+Check the reason suffix first:
+
+- `camera has not produced a frame`: verify the Webots stream or C920.
+- `camera frame stale`: the source stopped updating or Webots is paused.
+- `detector has not completed inference`: model startup is not ready.
+- `inference stale`: model latency exceeds the configured freshness limit.
+- `camera worker stopped` / `detector worker stopped`: inspect the preceding
+  exception; do not hide a dead worker by increasing a threshold.
+
+Keep `SEND_COMMANDS=0` while diagnosing. Increase the relevant stale threshold
+only when measured valid inference latency consistently exceeds its current
+value.
+
 ## `webots-yolo` stays in `seeking gate`
 
 Check these in order:
@@ -612,6 +642,49 @@ bash scripts/run_iris_camera_yolo.sh
 
 Do not use a very large stale value during motion tests; old detections can make
 the drone center on where the gate used to be, not where it is now in the frame.
+
+## OpenCV diagnostics exits with a Qt thread error
+
+Messages such as `QObject::killTimer`, `QObject::startTimer`, or
+`QThread: Destroyed while thread is still running` indicate incorrect GUI
+thread ownership or incomplete process cleanup. Current code keeps camera and
+YOLO in background workers, but runs `imshow`, key polling, and window
+destruction on the runtime main thread. It also waits for an active inference
+to finish during shutdown.
+
+Make sure the launcher is using this checkout, not a stale installed command:
+
+```bash
+SEND_COMMANDS=0 WEBOTS_DIAGNOSTICS_WINDOW=1 bash scripts/run_iris_camera_yolo.sh
+```
+
+Press `q` or `Esc` while the diagnostics window is focused to close only that
+window. Stop the autonomy process with `Ctrl+C`; its `finally` path closes the
+workers and camera. For a headless session, set
+`WEBOTS_DIAGNOSTICS_WINDOW=0` instead of forcing a Qt offscreen backend.
+
+If the terminal prints only `Killed` with no Python traceback or Qt message,
+check for Linux out-of-memory termination; that is a separate resource issue:
+
+```bash
+journalctl -k -b | grep -Ei 'out of memory|oom|killed process'
+free -h
+```
+
+If the Qt error persists, record the exact stderr line and these versions before
+changing mission or controller tuning:
+
+```bash
+python -c "import cv2; print(cv2.__version__)"
+python -c "import ultralytics; print(ultralytics.__version__)"
+```
+
+`QFontDatabase: Cannot find font directory .../cv2/qt/fonts` is a different,
+non-fatal OpenCV wheel warning. Current diagnostics remove
+`QT_QPA_FONTDIR` only when it points to a missing directory, allowing Qt to use
+the system fontconfig configuration. No system font path is hardcoded. If the
+warning remains, verify that the Ubuntu desktop has a working fontconfig setup;
+do not change mission or ACK tuning for this warning.
 
 ## Drone oscillates while centering on a gate
 
