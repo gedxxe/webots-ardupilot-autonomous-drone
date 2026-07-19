@@ -1,8 +1,8 @@
 # Project Status and Agent Ground Truth
 
-Last audited status: 2026-07-02, after consolidating the shared YOLO provider
-wiring for Webots/OpenCV, keeping SITL on `webots-yolo`, and keeping Raspberry
-Pi hardware on a fail-closed dry-run scaffold.
+Last audited status: 2026-07-20, after rechecking OpenCV HighGUI/Qt ownership,
+centralizing runtime/domain defaults, adding fail-closed perception progress
+monitoring, and suppressing tracked command retransmission after accepted ACK.
 
 This document is the short source of truth for AI agents and maintainers. If a
 claim conflicts with this file, verify the code and update this file before
@@ -49,8 +49,10 @@ continuing.
 - MAVLink command adapter for guided mode, arm, takeoff, land, and body-frame
   velocity.
 - MAVLink `COMMAND_ACK` tracking for mission `COMMAND_LONG` commands:
-  arm/disarm, guided takeoff, and land. Accepted ACKs clear pending commands;
-  rejected ACKs or exhausted ACK timeouts fail closed in the runtime.
+  arm/disarm, guided takeoff, and land. Accepted ACKs clear pending commands
+  and latch the accepted command identity so repeated mission intent does not
+  transmit a new `COMMAND_LONG`; rejected ACKs or exhausted ACK timeouts fail
+  closed in the runtime.
 - Configurable ACK policy through `COMMAND_ACK_REQUIRED`,
   `COMMAND_ACK_TIMEOUT`, and `COMMAND_ACK_MAX_RETRIES`.
 - MAVLink runtime supports serial baud configuration through `MAVLINK_BAUD` /
@@ -86,6 +88,17 @@ continuing.
 - `webots-yolo` runs camera ingestion and YOLO inference in background workers.
   The mission loop only reads the latest fresh detection snapshot; it does not
   block on TCP frame reads or model inference.
+- Diagnostics overlays are built by the detector worker, but OpenCV
+  `imshow`/event processing/window destruction are owned by the runtime main
+  thread. Shutdown waits for an active inference to finish before releasing
+  native camera and GUI resources.
+- Runtime distinguishes a healthy detector with no gate candidate from stalled
+  camera/inference progress. Stalled perception pauses mission updates and sends
+  zero-velocity hold in command mode; the existing detector stale threshold is
+  the configurable health limit.
+- Reaching process `MAX_RUNTIME` no longer exits silently: command mode sends a
+  fail-closed land command before resource shutdown, while dry-run reports the
+  same decision without transmitting it.
 - `opencv-yolo` reuses the same bounded-latest YOLO/target-selector provider
   with an OpenCV camera frame source for Raspberry Pi/C920 dry-run tests.
 - `scripts/probe_opencv_camera.py` checks the C920/OpenCV source without
@@ -175,6 +188,12 @@ continuing.
   `MISSION_GATE_PASS_SPEED`, `MISSION_NEXT_GATE_CLEAR_DISTANCE`,
   `MISSION_NEXT_GATE_MIN_AREA`, `MISSION_GATE_READY_AREA`, and
   `MISSION_BRAKE_SETTLE` / `MISSION_BRAKE_RAMP`.
+- Takeoff and altitude safety tuning is exposed through
+  `MISSION_TAKEOFF_*`, `MISSION_MIN_CENTERING_ALTITUDE`,
+  `MISSION_MAX_CENTERING_ALTITUDE`, `MISSION_ALTITUDE_HOLD_*`,
+  `MISSION_LANDING_COMPLETE_ALTITUDE`, and `MISSION_TIMEOUT`. Runtime defaults
+  are derived from domain config classes instead of duplicating their numeric
+  values.
 - Visual smoothness tuning lives in `VISUAL_FILTER_ALPHA`,
   `VISUAL_COMMAND_FILTER_ALPHA`, `VISUAL_MAX_FORWARD_SPEED`, and the
   `VISUAL_*_KP` / `VISUAL_MAX_*` fields. `VISUAL_MAX_ERROR_FOR_FORWARD`

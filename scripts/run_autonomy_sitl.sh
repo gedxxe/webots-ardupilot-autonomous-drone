@@ -51,6 +51,10 @@ CONFIG_KEYS=(
   GATE_SELECTOR_APPEARANCE_WEIGHT
   GATE_SELECTOR_STABLE_WINDOW
   GATE_SELECTOR_REQUIRED_STABLE
+  MISSION_TAKEOFF_ALTITUDE
+  MISSION_TAKEOFF_SETTLE_TOLERANCE
+  MISSION_TAKEOFF_STABLE_TICKS
+  MISSION_TAKEOFF_TIMEOUT
   MISSION_MAX_DETECTION_AGE
   MISSION_REQUIRED_DETECTION_TICKS
   MISSION_CENTER_DWELL
@@ -70,6 +74,15 @@ CONFIG_KEYS=(
   MISSION_BRAKE_ALTITUDE_HOLD
   MISSION_FINAL_EXIT_DISTANCE
   MISSION_FINAL_EXIT_SPEED
+  MISSION_MIN_CENTERING_ALTITUDE
+  MISSION_MAX_CENTERING_ALTITUDE
+  MISSION_ALTITUDE_HOLD_ENABLED
+  MISSION_ALTITUDE_HOLD_DEADBAND
+  MISSION_ALTITUDE_HOLD_KP
+  MISSION_ALTITUDE_HOLD_MAX_CLIMB_SPEED
+  MISSION_ALTITUDE_HOLD_MAX_DESCENT_SPEED
+  MISSION_LANDING_COMPLETE_ALTITUDE
+  MISSION_TIMEOUT
   VISUAL_FRAME_WIDTH
   VISUAL_FRAME_HEIGHT
   VISUAL_MIN_CONFIDENCE
@@ -178,22 +191,47 @@ append_arg_if_nonempty() {
   fi
 }
 
+parse_bool_setting() {
+  local key="$1"
+  local raw_value="${!key:-}"
+  local normalized="${raw_value,,}"
+  case "${normalized}" in
+    "1"|"true"|"yes"|"on")
+      PARSED_BOOL_VALUE="1"
+      ;;
+    "0"|"false"|"no"|"off")
+      PARSED_BOOL_VALUE="0"
+      ;;
+    "")
+      PARSED_BOOL_VALUE=""
+      ;;
+    *)
+      echo "${key} must be 0/1, true/false, yes/no, or on/off" >&2
+      exit 2
+      ;;
+  esac
+}
+
 append_bool_optional_arg() {
   local key="$1"
   local enabled_option="$2"
   local disabled_option="$3"
-  case "${!key:-}" in
-    "1"|"true"|"TRUE"|"yes"|"YES")
+  parse_bool_setting "${key}"
+  case "${PARSED_BOOL_VALUE}" in
+    "1") cmd+=("${enabled_option}") ;;
+    "0") cmd+=("${disabled_option}") ;;
+  esac
+}
+
+append_bool_flag() {
+  local key="$1"
+  local enabled_option="$2"
+  parse_bool_setting "${key}"
+  case "${PARSED_BOOL_VALUE}" in
+    "1")
       cmd+=("${enabled_option}")
       ;;
-    "0"|"false"|"FALSE"|"no"|"NO")
-      cmd+=("${disabled_option}")
-      ;;
-    "")
-      ;;
-    *)
-      echo "${key} must be 0/1, true/false, or yes/no" >&2
-      exit 2
+    "0"|"")
       ;;
   esac
 }
@@ -238,7 +276,7 @@ Fix from the repo root:
   pip install -e ".[dev]"
 
 If you want to reuse an existing ArduPilot virtualenv:
-  source /media/gedxxe/DATA/venv-ardupilot/bin/activate
+  source /path/to/venv-ardupilot/bin/activate
   pip install -e ".[dev]"
 EOF
       exit 127
@@ -264,7 +302,7 @@ Fix from the repo root:
   pip install -e ".[dev]"
 
 If you want to reuse an existing ArduPilot virtualenv:
-  source /media/gedxxe/DATA/venv-ardupilot/bin/activate
+  source /path/to/venv-ardupilot/bin/activate
   pip install -e ".[dev]"
 EOF
   exit 127
@@ -318,6 +356,10 @@ append_arg_if_nonempty --gate-selector-min-appearance-score GATE_SELECTOR_MIN_AP
 append_arg_if_nonempty --gate-selector-appearance-weight GATE_SELECTOR_APPEARANCE_WEIGHT
 append_arg_if_nonempty --gate-selector-stable-window GATE_SELECTOR_STABLE_WINDOW
 append_arg_if_nonempty --gate-selector-required-stable GATE_SELECTOR_REQUIRED_STABLE
+append_arg_if_nonempty --mission-takeoff-altitude MISSION_TAKEOFF_ALTITUDE
+append_arg_if_nonempty --mission-takeoff-settle-tolerance MISSION_TAKEOFF_SETTLE_TOLERANCE
+append_arg_if_nonempty --mission-takeoff-stable-ticks MISSION_TAKEOFF_STABLE_TICKS
+append_arg_if_nonempty --mission-takeoff-timeout MISSION_TAKEOFF_TIMEOUT
 append_arg_if_nonempty --mission-max-detection-age MISSION_MAX_DETECTION_AGE
 append_arg_if_nonempty --mission-required-detection-ticks MISSION_REQUIRED_DETECTION_TICKS
 append_arg_if_nonempty --mission-center-dwell MISSION_CENTER_DWELL
@@ -336,6 +378,15 @@ append_arg_if_nonempty --mission-brake-settle MISSION_BRAKE_SETTLE
 append_arg_if_nonempty --mission-brake-ramp MISSION_BRAKE_RAMP
 append_arg_if_nonempty --mission-final-exit-distance MISSION_FINAL_EXIT_DISTANCE
 append_arg_if_nonempty --mission-final-exit-speed MISSION_FINAL_EXIT_SPEED
+append_arg_if_nonempty --mission-min-centering-altitude MISSION_MIN_CENTERING_ALTITUDE
+append_arg_if_nonempty --mission-max-centering-altitude MISSION_MAX_CENTERING_ALTITUDE
+append_bool_optional_arg MISSION_ALTITUDE_HOLD_ENABLED --mission-altitude-hold-enabled --no-mission-altitude-hold-enabled
+append_arg_if_nonempty --mission-altitude-hold-deadband MISSION_ALTITUDE_HOLD_DEADBAND
+append_arg_if_nonempty --mission-altitude-hold-kp MISSION_ALTITUDE_HOLD_KP
+append_arg_if_nonempty --mission-altitude-hold-max-climb-speed MISSION_ALTITUDE_HOLD_MAX_CLIMB_SPEED
+append_arg_if_nonempty --mission-altitude-hold-max-descent-speed MISSION_ALTITUDE_HOLD_MAX_DESCENT_SPEED
+append_arg_if_nonempty --mission-landing-complete-altitude MISSION_LANDING_COMPLETE_ALTITUDE
+append_arg_if_nonempty --mission-timeout MISSION_TIMEOUT
 append_arg_if_nonempty --visual-frame-width VISUAL_FRAME_WIDTH
 append_arg_if_nonempty --visual-frame-height VISUAL_FRAME_HEIGHT
 append_arg_if_nonempty --visual-min-confidence VISUAL_MIN_CONFIDENCE
@@ -361,21 +412,12 @@ append_arg_if_nonempty --visual-max-lateral-speed VISUAL_MAX_LATERAL_SPEED
 append_arg_if_nonempty --visual-max-vertical-speed VISUAL_MAX_VERTICAL_SPEED
 append_arg_if_nonempty --visual-max-yaw-rate VISUAL_MAX_YAW_RATE
 
-if [[ "${WEBOTS_DIAGNOSTICS_WINDOW:-0}" == "1" ]]; then
-  cmd+=(--webots-diagnostics-window)
-fi
-
-if [[ "${OPENCV_DIAGNOSTICS_WINDOW:-0}" == "1" ]]; then
-  cmd+=(--opencv-diagnostics-window)
-fi
-
-if [[ "${MISSION_BRAKE_ALTITUDE_HOLD:-0}" == "1" ]]; then
-  cmd+=(--mission-brake-altitude-hold)
-fi
-
-if [[ "${SEND_COMMANDS:-0}" == "1" ]]; then
-  cmd+=(--send-commands)
-else
+append_bool_flag WEBOTS_DIAGNOSTICS_WINDOW --webots-diagnostics-window
+append_bool_flag OPENCV_DIAGNOSTICS_WINDOW --opencv-diagnostics-window
+append_bool_flag MISSION_BRAKE_ALTITUDE_HOLD --mission-brake-altitude-hold
+append_bool_flag SEND_COMMANDS --send-commands
+parse_bool_setting SEND_COMMANDS
+if [[ "${PARSED_BOOL_VALUE}" != "1" ]]; then
   echo "SEND_COMMANDS=0: running dry-run only; no MAVLink motion commands will be sent." >&2
 fi
 

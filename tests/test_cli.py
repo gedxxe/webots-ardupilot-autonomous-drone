@@ -26,12 +26,22 @@ def test_cli_parser_defaults_are_available_without_runtime_adapters() -> None:
     assert args.yolo_imgsz == 640
     assert args.gate_selector_min_appearance_score == 0.0
     assert args.gate_selector_appearance_weight == 0.0
+    assert args.mission_takeoff_altitude == 1.0
+    assert args.mission_takeoff_settle_tolerance == 0.06
+    assert args.mission_takeoff_stable_ticks == 8
+    assert args.mission_takeoff_timeout == 20.0
     assert args.mission_max_detection_age == 0.75
     assert args.mission_required_detection_ticks == 2
     assert args.mission_center_lost_grace_ticks == 10
     assert args.mission_brake_settle == 1.0
     assert args.mission_brake_ramp == 0.7
     assert args.mission_brake_altitude_hold is False
+    assert args.mission_min_centering_altitude == 0.65
+    assert args.mission_max_centering_altitude == 2.0
+    assert args.mission_altitude_hold_enabled is True
+    assert args.mission_altitude_hold_deadband == 0.08
+    assert args.mission_landing_complete_altitude == 0.15
+    assert args.mission_timeout == 180.0
     assert args.visual_frame_width == 640
     assert args.visual_frame_height == 480
     assert args.visual_max_error_for_forward == 0.45
@@ -77,6 +87,12 @@ def test_cli_parser_accepts_jsonl_log_path() -> None:
     args = parser.parse_args(["--log-jsonl", "logs/autonomy.jsonl"])
 
     assert args.log_jsonl == "logs/autonomy.jsonl"
+
+
+def test_cli_parser_can_disable_companion_altitude_hold() -> None:
+    args = build_parser().parse_args(["--no-mission-altitude-hold-enabled"])
+
+    assert args.mission_altitude_hold_enabled is False
 
 
 def test_cli_parser_accepts_opencv_yolo_detector_settings() -> None:

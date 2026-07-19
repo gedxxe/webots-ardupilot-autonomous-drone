@@ -11,6 +11,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from drone_autonomy.runtime.config import AutonomyRuntimeConfig
 from drone_autonomy.runtime.env_config import load_env_file, runtime_config_from_env
 from drone_autonomy.runtime.preflight import has_blocking_errors, run_preflight
 
@@ -82,8 +83,8 @@ def _default_env_path(profile: str) -> Path:
 def _apply_profile_defaults(
     profile: str,
     env_values: dict[str, str],
-    config: object,
-) -> object:
+    config: AutonomyRuntimeConfig,
+) -> AutonomyRuntimeConfig:
     if profile != "simulation":
         return config
     if env_values.get("AUTONOMY_PROFILE", "iris-camera-yolo") != "iris-camera-yolo":

@@ -40,6 +40,18 @@ def test_preflight_rejects_empty_yolo_class_filter() -> None:
     assert any(issue.code == "yolo_class_filter_empty" for issue in issues)
 
 
+def test_preflight_rejects_inverted_centering_altitude_guard() -> None:
+    config = AutonomyRuntimeConfig(
+        mission_min_centering_altitude_m=2.0,
+        mission_max_centering_altitude_m=1.0,
+    )
+
+    issues = run_preflight(config, check_model_file=False)
+
+    assert has_blocking_errors(issues)
+    assert any(issue.code == "mission_config_invalid" for issue in issues)
+
+
 def test_env_config_parser_uses_runtime_defaults_and_repo_root(tmp_path: Path) -> None:
     env_file = tmp_path / "autonomy_runtime.env"
     env_file.write_text(
@@ -50,6 +62,9 @@ def test_env_config_parser_uses_runtime_defaults_and_repo_root(tmp_path: Path) -
                 'SEND_COMMANDS="1"',
                 'AUTONOMY_LOG_JSONL="${REPO_ROOT}/logs/test.jsonl"',
                 'YOLO_GATE_CLASS_IDS="3"',
+                'MISSION_TAKEOFF_ALTITUDE="1.2"',
+                'MISSION_ALTITUDE_HOLD_ENABLED="off"',
+                'MISSION_TIMEOUT="240"',
             ]
         ),
         encoding="utf-8",
@@ -63,6 +78,9 @@ def test_env_config_parser_uses_runtime_defaults_and_repo_root(tmp_path: Path) -
     assert config.send_commands is True
     assert Path(config.log_jsonl_path) == tmp_path / "logs/test.jsonl"
     assert config.yolo_gate_class_ids == (3,)
+    assert config.mission_config().takeoff_altitude_m == 1.2
+    assert config.mission_config().altitude_hold_enabled is False
+    assert config.mission_config().mission_timeout_s == 240.0
     assert config.loop_hz == AutonomyRuntimeConfig().loop_hz
 
 

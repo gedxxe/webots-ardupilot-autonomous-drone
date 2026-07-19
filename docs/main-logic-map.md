@@ -152,6 +152,8 @@ Responsibilities:
 - Track `COMMAND_ACK` for mission `COMMAND_LONG` commands:
   arm/disarm, takeoff, and land.
 - Retry tracked commands on ACK timeout and report failures to the runtime.
+- Latch an exact tracked command after accepted ACK so repeated mission intent
+  is suppressed rather than transmitted as a new `COMMAND_LONG`.
 
 Internal velocity convention:
 

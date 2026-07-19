@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
-from threading import Event, Lock, Thread
+from pathlib import Path
+from threading import Event, Lock, Thread, get_ident
 from time import monotonic
 from typing import Protocol
 
@@ -127,15 +129,19 @@ class WebotsYoloGateProvider:
         self._latest_frame_seq = 0
         self._latest_detection: GateDetection | None = None
         self._latest_detection_frame_s = -999.0
-        self._latest_selection: GateSelectionResult | None = None
-        self._latest_raw_prediction_summary = "raw=<none>"
         self._processed_frame_seq = 0
         self._target_context = GateTargetContext()
+        self._latest_diagnostics_canvas: object | None = None
+        self._latest_diagnostics_seq = 0
 
         self._last_camera_warning_s = -999.0
         self._last_detector_error_s = -999.0
         self._camera_ready_announced = False
         self._diagnostics_disabled = False
+        self._diagnostics_displayed_seq = 0
+        self._diagnostics_window_open = False
+        self._diagnostics_owner_thread_id: int | None = None
+        self._closed = False
 
         self._camera_thread = Thread(
             target=self._camera_worker,
@@ -147,8 +153,18 @@ class WebotsYoloGateProvider:
             name=f"{config.pipeline_name}-detector",
             daemon=True,
         )
-        self._camera_thread.start()
-        self._detector_thread.start()
+        try:
+            self._camera_thread.start()
+            self._detector_thread.start()
+        except BaseException:
+            self._stop_event.set()
+            self._frame_ready_event.set()
+            if self._camera_thread.is_alive():
+                self._camera_thread.join()
+            if self._detector_thread.is_alive():
+                self._detector_thread.join()
+            self.camera.close()
+            raise
 
     def update_context(self, *, phase: str, gate_index: int) -> None:
         """Update mission context used by target validation and tracking."""
@@ -175,12 +191,62 @@ class WebotsYoloGateProvider:
             return None
         return detection
 
+    def stale_reason(self, now_s: float) -> str | None:
+        """Return a fail-closed reason when frame/inference progress has stalled."""
+
+        if not self._camera_thread.is_alive():
+            return f"{self.config.pipeline_name} camera worker stopped"
+        if not self._detector_thread.is_alive():
+            return f"{self.config.pipeline_name} detector worker stopped"
+
+        with self._lock:
+            frame = self._latest_frame
+            processed_frame_seq = self._processed_frame_seq
+            processed_frame_s = self._latest_detection_frame_s
+
+        if frame is None:
+            return f"{self.config.pipeline_name} camera has not produced a frame"
+        frame_age_s = now_s - frame.observed_at_s
+        if frame_age_s > self.config.detection_stale_s:
+            return (
+                f"{self.config.pipeline_name} camera frame stale "
+                f"age={frame_age_s:0.2f}s limit={self.config.detection_stale_s:0.2f}s"
+            )
+        if processed_frame_seq == 0:
+            return f"{self.config.pipeline_name} detector has not completed inference"
+        inference_age_s = now_s - processed_frame_s
+        if inference_age_s > self.config.detection_stale_s:
+            return (
+                f"{self.config.pipeline_name} inference stale "
+                f"age={inference_age_s:0.2f}s "
+                f"limit={self.config.detection_stale_s:0.2f}s"
+            )
+        return None
+
+    def process_events(self) -> None:
+        """Pump optional diagnostics UI events from the runtime/main thread."""
+
+        self._pump_diagnostics_window()
+
     def close(self) -> None:
+        """Stop workers and release camera/GUI resources deterministically."""
+
+        if self._closed:
+            return
+        self._closed = True
         self._stop_event.set()
         self._frame_ready_event.set()
-        self._camera_thread.join(timeout=1.0)
-        self._detector_thread.join(timeout=1.0)
-        self.camera.close()
+        try:
+            # A detector invocation cannot be cancelled safely. Wait for its
+            # current frame to finish so Python does not tear down Ultralytics,
+            # OpenCV, or Qt while the worker still owns native resources.
+            self._camera_thread.join()
+            self._detector_thread.join()
+        finally:
+            try:
+                self.camera.close()
+            finally:
+                self._close_diagnostics_window()
 
     def _camera_worker(self) -> None:
         """Continuously read camera frames and publish only the newest one."""
@@ -194,7 +260,6 @@ class WebotsYoloGateProvider:
             with self._lock:
                 self._latest_frame = frame
                 self._latest_frame_seq += 1
-                seq = self._latest_frame_seq
 
             self._frame_ready_event.set()
             if not self._camera_ready_announced:
@@ -204,10 +269,6 @@ class WebotsYoloGateProvider:
                     f"encoding={frame.encoding}"
                 )
                 self._camera_ready_announced = True
-
-            # Keep the local variable alive only for logging/readability. The
-            # worker intentionally does not enqueue all frames.
-            _ = seq
 
     def _detector_worker(self) -> None:
         """Run YOLO on the newest frame and publish the newest detection."""
@@ -241,19 +302,23 @@ class WebotsYoloGateProvider:
                 context = self._target_context
             selection = self.selector.update(candidates, context=context)
             detection = selection.detection
-            self._show_diagnostics(frame, selection, raw_prediction_summary)
+            diagnostics_canvas = self._build_diagnostics_canvas(
+                frame,
+                selection,
+                raw_prediction_summary,
+            )
 
             with self._lock:
                 if seq >= self._processed_frame_seq:
                     self._latest_detection = detection
-                    self._latest_selection = selection
-                    self._latest_raw_prediction_summary = raw_prediction_summary
                     self._latest_detection_frame_s = (
                         detection.observed_at_s
                         if detection is not None
                         else frame.observed_at_s
                     )
                     self._processed_frame_seq = seq
+                    self._latest_diagnostics_canvas = diagnostics_canvas
+                    self._latest_diagnostics_seq = seq
                 if self._latest_frame_seq == seq:
                     self._frame_ready_event.clear()
 
@@ -279,27 +344,30 @@ class WebotsYoloGateProvider:
             return self.config.camera_read_timeout_s
         return self.config.camera.read_timeout_s
 
-    def _show_diagnostics(
+    def _build_diagnostics_canvas(
         self,
         frame: CameraFrame,
         selection: GateSelectionResult,
         raw_prediction_summary: str,
-    ) -> None:
-        if not self.config.diagnostics_window or self._diagnostics_disabled:
-            return
+    ) -> object | None:
+        """Build an overlay in the detector worker without invoking HighGUI."""
+
+        with self._lock:
+            diagnostics_disabled = self._diagnostics_disabled
+        if not self.config.diagnostics_window or diagnostics_disabled:
+            return None
 
         try:
             import cv2
             import numpy as np
         except ModuleNotFoundError as exc:  # pragma: no cover - environment guard
-            print(f"{self.config.pipeline_name} diagnostics disabled: {exc}")
-            self._diagnostics_disabled = True
-            return
+            self._disable_diagnostics(exc)
+            return None
 
         image = getattr(frame, "image", None)
         shape = getattr(image, "shape", None)
         if shape is None:
-            return
+            return None
 
         try:
             canvas = np.ascontiguousarray(image.copy())
@@ -308,7 +376,7 @@ class WebotsYoloGateProvider:
             elif len(shape) == 3 and shape[2] >= 3:
                 canvas = cv2.cvtColor(canvas[:, :, :3], cv2.COLOR_RGB2BGR)
             else:
-                return
+                return None
 
             self._draw_validator_roi(cv2, canvas, selection)
             self._draw_crosshair(cv2, canvas)
@@ -389,11 +457,108 @@ class WebotsYoloGateProvider:
                     cv2.LINE_AA,
                 )
 
-            cv2.imshow(self.config.diagnostics_window_name, canvas)
-            cv2.waitKey(1)
+            return canvas
         except Exception as exc:  # pragma: no cover - GUI/runtime dependent
-            print(f"{self.config.pipeline_name} diagnostics disabled: {exc}")
+            self._disable_diagnostics(exc)
+            return None
+
+    def _pump_diagnostics_window(self) -> None:
+        """Display the newest overlay and process Qt events on one thread."""
+
+        if not self.config.diagnostics_window:
+            return
+
+        current_thread_id = get_ident()
+        if self._diagnostics_owner_thread_id is None:
+            self._diagnostics_owner_thread_id = current_thread_id
+        elif self._diagnostics_owner_thread_id != current_thread_id:
+            self._disable_diagnostics(
+                "window event loop was called from more than one thread"
+            )
+            return
+
+        with self._lock:
+            disabled = self._diagnostics_disabled
+            canvas = self._latest_diagnostics_canvas
+            canvas_seq = self._latest_diagnostics_seq
+
+        if disabled:
+            self._close_diagnostics_window()
+            return
+        if canvas is None and not self._diagnostics_window_open:
+            return
+
+        try:
+            import cv2
+        except ModuleNotFoundError as exc:  # pragma: no cover - environment guard
+            self._disable_diagnostics(exc)
+            return
+        _remove_invalid_qt_font_override()
+
+        try:
+            if canvas is not None and canvas_seq != self._diagnostics_displayed_seq:
+                cv2.imshow(self.config.diagnostics_window_name, canvas)
+                self._diagnostics_displayed_seq = canvas_seq
+                self._diagnostics_window_open = True
+
+            key = cv2.pollKey() if hasattr(cv2, "pollKey") else cv2.waitKey(1)
+            if key in (27, ord("q"), ord("Q")):
+                self._disable_diagnostics("window closed by operator")
+                self._close_diagnostics_window()
+                return
+
+            visible_property = getattr(cv2, "WND_PROP_VISIBLE", None)
+            if (
+                self._diagnostics_window_open
+                and hasattr(cv2, "getWindowProperty")
+                and visible_property is not None
+            ):
+                visible = cv2.getWindowProperty(
+                    self.config.diagnostics_window_name,
+                    visible_property,
+                )
+                if visible < 1.0:
+                    self._disable_diagnostics("window closed by operator")
+                    self._diagnostics_window_open = False
+        except Exception as exc:  # pragma: no cover - GUI/runtime dependent
+            self._disable_diagnostics(exc)
+            self._close_diagnostics_window()
+
+    def _close_diagnostics_window(self) -> None:
+        """Destroy this provider's HighGUI window on its owning thread."""
+
+        if not self._diagnostics_window_open:
+            return
+        if (
+            self._diagnostics_owner_thread_id is not None
+            and self._diagnostics_owner_thread_id != get_ident()
+        ):
+            print(
+                f"{self.config.pipeline_name} diagnostics close skipped: "
+                "called from a non-owner thread"
+            )
+            return
+
+        self._diagnostics_window_open = False
+        try:
+            import cv2
+
+            cv2.destroyWindow(self.config.diagnostics_window_name)
+            if hasattr(cv2, "pollKey"):
+                cv2.pollKey()
+            else:
+                cv2.waitKey(1)
+        except Exception as exc:  # pragma: no cover - GUI/runtime dependent
+            print(f"{self.config.pipeline_name} diagnostics close warning: {exc}")
+
+    def _disable_diagnostics(self, reason: object) -> None:
+        """Disable only diagnostics; perception and mission behavior continue."""
+
+        with self._lock:
+            if self._diagnostics_disabled:
+                return
             self._diagnostics_disabled = True
+        print(f"{self.config.pipeline_name} diagnostics disabled: {reason}")
 
     def _draw_validator_roi(
         self,
@@ -618,3 +783,11 @@ def _format_raw_prediction_summary(raw_predictions: object) -> str:
 
     ordered = sorted(counts.items(), key=lambda item: item[0])
     return "raw=" + " ".join(f"{label}x{count}" for label, count in ordered)
+
+
+def _remove_invalid_qt_font_override() -> None:
+    """Let Qt use system fontconfig when OpenCV points to missing wheel fonts."""
+
+    font_dir = os.environ.get("QT_QPA_FONTDIR")
+    if font_dir and not Path(font_dir).is_dir():
+        os.environ.pop("QT_QPA_FONTDIR", None)

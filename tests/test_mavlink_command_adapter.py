@@ -118,6 +118,66 @@ def test_tracked_command_ack_acceptance_clears_pending() -> None:
     assert "MAV_RESULT_ACCEPTED" in events[0].detail
 
 
+def test_accepted_tracked_commands_are_not_sent_again() -> None:
+    cases = (
+        (
+            VehicleCommand.arm_vehicle(),
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+        ),
+        (VehicleCommand.takeoff(1.0), mavutil.mavlink.MAV_CMD_NAV_TAKEOFF),
+        (VehicleCommand.land(), mavutil.mavlink.MAV_CMD_NAV_LAND),
+    )
+
+    for command, command_id in cases:
+        master = FakeMaster()
+        adapter = adapter_for(master)
+
+        assert adapter.send(command, now_s=1.0) is True
+        adapter.update_message(
+            FakeCommandAck(command_id, mavutil.mavlink.MAV_RESULT_ACCEPTED)
+        )
+
+        assert adapter.send(command, now_s=100.0) is False
+        assert len(master.mav.command_long_calls) == 1
+        assert adapter.pending_ack_count == 0
+        assert adapter.pop_ack_failures() == ()
+
+
+def test_new_intent_replaces_accepted_command_in_same_family() -> None:
+    master = FakeMaster()
+    adapter = adapter_for(master)
+
+    assert adapter.send(VehicleCommand.arm_vehicle(), now_s=1.0) is True
+    adapter.update_message(
+        FakeCommandAck(
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            mavutil.mavlink.MAV_RESULT_ACCEPTED,
+        )
+    )
+
+    assert adapter.send(VehicleCommand.disarm_vehicle(), now_s=2.0) is True
+    adapter.update_message(
+        FakeCommandAck(
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            mavutil.mavlink.MAV_RESULT_ACCEPTED,
+        )
+    )
+
+    assert adapter.send(VehicleCommand.arm_vehicle(), now_s=3.0) is True
+    assert len(master.mav.command_long_calls) == 3
+
+
+def test_same_command_id_cannot_have_multiple_pending_intents() -> None:
+    master = FakeMaster()
+    adapter = adapter_for(master)
+
+    assert adapter.send(VehicleCommand.takeoff(1.0), now_s=1.0) is True
+    assert adapter.send(VehicleCommand.takeoff(1.5), now_s=2.0) is False
+
+    assert adapter.pending_ack_count == 1
+    assert len(master.mav.command_long_calls) == 1
+
+
 def test_tracked_command_ack_rejection_becomes_failure() -> None:
     master = FakeMaster()
     adapter = adapter_for(master)

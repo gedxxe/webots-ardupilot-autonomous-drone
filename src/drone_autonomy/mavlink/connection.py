@@ -7,7 +7,7 @@ from pymavlink import mavutil
 
 
 class MavlinkClient:
-    """Small MAVLink read client used by smoke tests.
+    """Small MAVLink read client used by connection checks.
 
     This class contains blocking reads by design. Do not call it directly from
     `GateAutonomyMission.update()`. A real runtime should read MAVLink in an

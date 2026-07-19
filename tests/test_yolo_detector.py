@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 np = pytest.importorskip("numpy")
@@ -32,6 +35,25 @@ class FakeModel:
     def predict(self, **kwargs: object) -> list[FakeResult]:
         self.last_predict_kwargs = kwargs
         return [FakeResult()]
+
+
+def test_runtime_model_loader_sets_detect_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str | None]] = []
+
+    class FakeYoloLoader(FakeModel):
+        def __init__(self, model_path: str, *, task: str | None = None) -> None:
+            super().__init__()
+            calls.append((model_path, task))
+
+    monkeypatch.setitem(
+        sys.modules,
+        "ultralytics",
+        SimpleNamespace(YOLO=FakeYoloLoader),
+    )
+
+    YoloGateDetector(YoloGateConfig(model_path="model-directory"))
+
+    assert calls == [("model-directory", "detect")]
 
 
 def test_yolo_config_defaults_match_bundled_gate_model() -> None:

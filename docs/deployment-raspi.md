@@ -276,7 +276,7 @@ unless you intentionally want to run `opencv-yolo` on a PC. Do not put Webots
 TCP camera variables into `configs/raspi_runtime.env`; hardware uses
 `OPENCV_*` camera variables.
 
-## MAVLink Smoke Tests
+## MAVLink Connection Checks
 
 Heartbeat check:
 

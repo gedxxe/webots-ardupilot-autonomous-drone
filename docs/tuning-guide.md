@@ -233,7 +233,7 @@ changing it.
 | `AUTONOMY_LOG_JSONL` | runtime diagnostics | Optional append-only JSONL log path for mission ticks, commands, detections, servo values, ACK events, and fail-closed waits. Empty means disabled. | Enable for tuning sessions when console output is not enough. Logging is best-effort and is not a safety interlock. |
 | `SEND_COMMANDS` | runtime | Safety switch. `0` runs perception and mission decisions without moving the vehicle. | Set `1` only after diagnostics show the correct target in SITL. |
 | `LOOP_HZ` | runtime | Mission/control tick rate. Higher rates reduce command latency but cannot make YOLO faster. | Keep `20` unless CPU load or telemetry rate proves otherwise. |
-| `MAX_RUNTIME` | runtime | Process-level timeout. Prevents a runaway unattended test. | Increase only for longer courses after failsafe behavior is verified. |
+| `MAX_RUNTIME` | runtime | Process-level timeout. When reached, command mode sends a fail-closed land command before shutdown; dry-run only reports the action. | Keep at or above the intended mission window; increase only for a longer course after timeout behavior is verified. |
 | `COURSE_FORWARD_X/Y` | telemetry adapter | Projects `LOCAL_POSITION_NED` into course-forward distance. Gate pass, gate-2 clear, and final exit depend on this. | Change if the Webots course is not aligned with local +X/North. |
 
 ACK scope:
@@ -243,6 +243,12 @@ tracked:    arm/disarm, takeoff, land
 not ACKed:  body velocity setpoint stream
 telemetry:  guided mode is validated from HEARTBEAT mode, not tracked ACK
 ```
+
+An exact arm/disarm, takeoff, or land command is not transmitted again after
+its ACK is accepted. Repeated mission output is reported as `suppressed` while
+the mission waits for telemetry. `COMMAND_ACK_TIMEOUT` and
+`COMMAND_ACK_MAX_RETRIES` apply only before acceptance; no extra deduplication
+timer or operator tuning variable is involved.
 
 ### Camera And YOLO
 
@@ -258,7 +264,7 @@ telemetry:  guided mode is validated from HEARTBEAT mode, not tracked ACK
 | `WEBOTS_CAMERA_HOST/PORT` | Webots camera client | TCP endpoint for ArduPilot Webots camera stream. Current `iris_camera.wbt` uses `127.0.0.1:5599`. | Change only if the world/controller port changes. |
 | `WEBOTS_CAMERA_ENCODING` | Webots camera client | Stream payload format. This repo's `iris_camera.wbt` requests `rgb24`; `gray8` is only for upstream-compatible fallback worlds. | Keep `rgb24` unless diagnostics prove the world/controller is sending grayscale. |
 | `WEBOTS_CAMERA_IDLE_RECONNECT` | Webots camera client | Watchdog for a connected socket that stops sending bytes. Avoids reconnect loops on normal short timeouts. | Increase if a slow Webots run reports idle reconnects despite a valid stream. |
-| `WEBOTS_DETECTION_STALE` | Webots YOLO provider | Maximum age for reusing the latest background YOLO result. Bridges camera/model FPS to the mission loop before mission validation. | Increase slightly for slow inference; keep `MISSION_MAX_DETECTION_AGE` aligned or higher enough for the mission to accept it. |
+| `WEBOTS_DETECTION_STALE` | Webots YOLO provider/runtime | Maximum camera-frame and completed-inference age. Older progress pauses mission updates and commands hold; a selected detection older than this is also not reused. | Increase only after measuring valid inference latency; keep `MISSION_MAX_DETECTION_AGE` aligned or high enough for mission acceptance. |
 | `WEBOTS_DIAGNOSTICS_WINDOW` | Webots YOLO provider | Enables OpenCV overlay for class labels, candidate reasons, ROI, area guides, and clearance box. | Keep `1` during simulation tuning; disable for headless runs. |
 
 ### Raspberry Pi OpenCV Camera
@@ -274,7 +280,7 @@ These variables affect only `DETECTOR="opencv-yolo"`. They should live in
 | `OPENCV_CAMERA_FPS` | OpenCV camera source | Requested capture FPS. This is not YOLO FPS. | Lower if USB/CPU load is unstable; raise only after inference latency is measured. |
 | `OPENCV_CAMERA_READ_TIMEOUT` | OpenCV YOLO provider | Wait interval while no OpenCV frame is available. | Increase slightly if logs show repeated camera wait messages while the camera is healthy. |
 | `OPENCV_CAMERA_OPEN_RETRY` | OpenCV camera source | Seconds between reopen attempts after camera open failure. | Increase if the camera takes longer to appear during boot. |
-| `OPENCV_DETECTION_STALE` | OpenCV YOLO provider | Maximum age for reusing the newest C920 YOLO result. | Keep aligned with measured inference latency and `MISSION_MAX_DETECTION_AGE`. |
+| `OPENCV_DETECTION_STALE` | OpenCV YOLO provider/runtime | Maximum C920 frame and completed-inference age before fail-closed hold; it also limits selected-detection reuse. | Keep aligned with measured inference latency and `MISSION_MAX_DETECTION_AGE`. |
 | `OPENCV_DIAGNOSTICS_WINDOW` | OpenCV YOLO provider | Enables the same diagnostics overlay for C920 frames. | Keep `1` until camera/model/selector behavior is verified on the Pi. |
 
 ### Gate Target Selector
@@ -289,6 +295,26 @@ These variables affect only `DETECTOR="opencv-yolo"`. They should live in
 | `GATE_SELECTOR_APPEARANCE_WEIGHT` | target selector | Optional scoring weight for hollow-gate evidence when multiple candidates survive validation. Default `0.0` disables score influence. | Increase slightly only after confirming appearance scores separate real gates from false class-3 objects. |
 | `GATE_SELECTOR_STABLE_WINDOW` | target selector | Number of recent frames considered for stable target validation. | Increase for noisy detections; decrease if the detector is stable but response is too delayed. |
 | `GATE_SELECTOR_REQUIRED_STABLE` | target selector | Required valid frames inside the stability window before publishing `GateDetection`. | Raise to suppress flicker; lower if gate 2 is valid but acquisition reacts too late. |
+
+### Takeoff And Altitude Safety
+
+These settings are operator-facing runtime values. Their defaults come from
+`GateMissionConfig`; the runtime does not maintain a second numeric default
+table.
+
+| Variable | Used by | Purpose and rationale | Tune when |
+| --- | --- | --- | --- |
+| `MISSION_TAKEOFF_ALTITUDE` | `TAKEOFF`, altitude hold | Guided-takeoff target passed to ArduPilot and the later fused-altitude reference. | Change for the course only after checking world/field clearance. |
+| `MISSION_TAKEOFF_SETTLE_TOLERANCE` | `TAKEOFF` | Allowed fused-altitude error around the target while counting stable ticks. | Increase slightly only if valid telemetry noise prevents takeoff completion. |
+| `MISSION_TAKEOFF_STABLE_TICKS` | `TAKEOFF` | Consecutive non-landed ticks required inside the settle band. | Raise for stronger confirmation; lower only if measured telemetry proves the default delays unnecessarily. |
+| `MISSION_TAKEOFF_TIMEOUT` | `TAKEOFF` | Maximum time before the mission enters failsafe if ArduPilot cannot reach the target. | Increase only when takeoff logs show a valid but slower climb. |
+| `MISSION_MIN_CENTERING_ALTITUDE` / `MAX_CENTERING_ALTITUDE` | `CENTER_GATE` | Hard image-servo altitude envelope. Commands that would move farther outside it are clamped to zero vertical velocity. | Set from course clearance and vehicle dimensions. |
+| `MISSION_ALTITUDE_HOLD_ENABLED` | seek/pass/acquire/final exit | Enables the bounded companion vertical-velocity bias around takeoff altitude. It consumes fused ArduPilot telemetry, not raw sensors. | Disable to let the flight controller own vertical correction entirely; compare SITL logs first. |
+| `MISSION_ALTITUDE_HOLD_DEADBAND` | altitude bias | Error band where companion vertical correction remains zero. | Increase if minor fused-altitude noise causes vertical command chatter. |
+| `MISSION_ALTITUDE_HOLD_KP` | altitude bias | Proportional conversion from fused-altitude error to body-z velocity. | Lower if correction oscillates; do not tune before speed limits. |
+| `MISSION_ALTITUDE_HOLD_MAX_CLIMB_SPEED` / `MAX_DESCENT_SPEED` | altitude bias | Independent saturation limits for upward/downward correction. | Lower first when vertical correction is too aggressive. |
+| `MISSION_LANDING_COMPLETE_ALTITUDE` | `LAND` | Altitude fallback used together with ArduPilot landed telemetry to mark completion. | Change only after checking the real estimator near ground. |
+| `MISSION_TIMEOUT` | mission state machine | Maximum mission elapsed time before fail-closed landing. Separate from process `MAX_RUNTIME`. | Keep no greater than the intended test window; extend only for a longer course. |
 
 ### Gate 1 And Gate 2 Mission Policy
 
